@@ -1,8 +1,20 @@
 # Application Fatigue
 
-A single-user local web app that scrapes Czech job boards, auto-generates cover letters with Ollama, and auto-applies to jobs using Playwright.
+**Stop copy-pasting your CV into the same form 200 times.**
 
-> **Geographic focus:** Currently targets the **Czech Republic** job market only.
+Application Fatigue is a local-first automation tool for IT job seekers. Point it at any role — frontend, backend, DevOps, QA, data science — and it will scrape multiple job boards simultaneously, generate tailored cover letters using local AI, and auto-apply on your behalf via browser automation. It fills out application forms, uploads your CV, and submits — all without you touching a browser.
+
+When the inevitable automated rejection emails roll in, you keep moving. The built-in dashboard tracks every application status (Pending → Applied → Interview → Rejected → Failed), so you always know where you stand. Bookmark promising roles to favourites, schedule interviews on the calendar, and let the app handle the repetitive grind while you focus on preparing for the interviews that actually matter.
+
+### What it does
+
+- **Scrapes** LinkedIn, StartupJobs.cz, and Jobstack.it in parallel — results ranked by semantic similarity to your query
+- **Generates cover letters** with Ollama (local) or GPT-4o-mini (optional) — streamed token-by-token, tailored to each specific job posting and your uploaded CV
+- **Auto-applies** via Playwright — detects form fields (name, email, phone, CV upload, cover letter), fills them from your profile, and submits. Handles LinkedIn Easy Apply multi-step flows automatically
+- **Tracks everything** — every application, its status, generated cover letters, and scheduled interviews in one place
+- **Runs locally** — your credentials, CV, and data never leave your machine. Site passwords encrypted with AES-256-GCM
+
+> **Geographic focus:** Currently targets the **Czech Republic** job market.
 
 ## Stack
 
