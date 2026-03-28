@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 import { getBrowser } from "@/lib/browser";
 
-type SiteName = "LINKEDIN" | "INDEED";
+type SiteName = "LINKEDIN";
 
 interface LoginConfig {
   loginUrl: string;
@@ -22,13 +22,6 @@ const LOGIN_CONFIGS: Record<SiteName, LoginConfig> = {
     submitSelector: '[type="submit"]',
     // After login LinkedIn redirects to /feed — just wait for URL to leave /login
     successIndicator: ".global-nav, .scaffold-layout, #voyager-feed",
-  },
-  INDEED: {
-    loginUrl: "https://secure.indeed.com/auth?hl=en&co=US",
-    usernameSelector: "#ifl-InputFormField-3",
-    passwordSelector: "#ifl-InputFormField-7",
-    submitSelector: '[data-testid="signin-button"]',
-    successIndicator: "#indeed-ia",
   },
 };
 

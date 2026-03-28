@@ -1,7 +1,6 @@
 export const typeDefs = `#graphql
   enum JobSource {
     LINKEDIN
-    INDEED
     GLASSDOOR
     STARTUPJOBS
     JOBSTACK
@@ -17,7 +16,6 @@ export const typeDefs = `#graphql
 
   enum SiteName {
     LINKEDIN
-    INDEED
   }
 
   type JobPosting {

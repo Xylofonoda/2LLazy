@@ -4,12 +4,7 @@ import { getAuthenticatedPage } from "@/lib/auth/sessionManager";
 import { prisma } from "@/lib/prisma";
 import { applyGeneric } from "./applyGeneric";
 import { applyLinkedIn } from "./applyLinkedIn";
-import { applyIndeed } from "./applyIndeed";
 
-/**
- * Routes a job to the appropriate apply handler based on its source.
- * Updates the application status when done.
- */
 export async function applyToJobSite(
   job: JobPosting,
   applicationId: string,
@@ -33,19 +28,6 @@ export async function applyToJobSite(
         const page = await getAuthenticatedPage("LINKEDIN");
         try {
           success = await applyLinkedIn(page, job.sourceUrl, coverLetterText);
-        } finally {
-          await page.close();
-        }
-        break;
-      }
-
-      case "INDEED": {
-        const page = await getAuthenticatedPage("INDEED").catch(async () => {
-          const ctx = await browser.newContext();
-          return ctx.newPage();
-        });
-        try {
-          success = await applyIndeed(page, job.sourceUrl, coverLetterText);
         } finally {
           await page.close();
         }

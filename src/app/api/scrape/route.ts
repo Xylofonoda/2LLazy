@@ -5,6 +5,7 @@ import { scrapeLinkedIn } from "@/lib/scrapers/linkedin";
 import { scrapeStartupJobs } from "@/lib/scrapers/startupjobs";
 import { scrapeJobstack } from "@/lib/scrapers/jobstack";
 import { ScrapedJob } from "@/lib/scrapers/types";
+import { cosineSimilarity } from "@/lib/similarity";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,7 +21,7 @@ function dedupe(text: string | null | undefined): string {
 
 type SSEEvent =
   | { type: "progress"; site: string; message: string }
-  | { type: "job"; data: ScrapedJob & { id: string; favourited: boolean } }
+  | { type: "job"; data: ScrapedJob & { id: string; favourited: boolean; similarity: number } }
   | { type: "complete"; total: number }
   | { type: "error"; site: string; message: string };
 
@@ -54,62 +55,90 @@ export async function POST(req: NextRequest) {
       { name: "Jobstack", fn: () => scrapeJobstack(query, skillLevel) },
     ];
 
-  // Run scraping in background so the response stream can start immediately
   (async () => {
-    let total = 0;
+    try {
+      // Step 1: embed the search query so we can rank against it
+      await send({ type: "progress", site: "Search", message: "Generating search embedding…" });
+      const queryText = [skillLevel !== "Any" ? skillLevel : "", query]
+        .filter(Boolean)
+        .join(" ");
+      const queryEmbedding = await generateEmbedding(queryText);
 
-    for (const scraper of scrapers) {
-      await send({ type: "progress", site: scraper.name, message: `Scraping ${scraper.name}...` });
+      const collectedJobs: Array<{
+        job: ScrapedJob & { id: string; favourited: boolean };
+        similarity: number;
+      }> = [];
 
-      try {
-        const jobs = await scraper.fn();
-
-        for (const job of jobs) {
-          // Deduplicate title/company text that may be doubled by hidden screen-reader spans
-          job.title = dedupe(job.title);
-          job.company = dedupe(job.company);
-          job.location = dedupe(job.location);
+      await Promise.allSettled(
+        scrapers.map(async (scraper) => {
+          await send({ type: "progress", site: scraper.name, message: `Scraping ${scraper.name}...` });
           try {
-            // Generate embedding
-            const embeddingText = `${job.title} ${job.company} ${job.description.slice(0, 500)}`;
-            const embedding = await generateEmbedding(embeddingText);
+            const jobs = await scraper.fn();
 
-            const saved = await prisma.jobPosting.upsert({
-              where: { sourceUrl: job.sourceUrl },
-              create: {
-                title: job.title,
-                company: job.company,
-                location: job.location ?? "Remote",
-                description: job.description,
-                sourceUrl: job.sourceUrl,
-                source: job.source,
-                salary: job.salary ?? null,
-                postedAt: job.postedAt ?? null,
-                embedding,
-              },
-              update: {
-                title: job.title,
-                description: job.description,
-                scrapedAt: new Date(),
-                embedding,
-              },
-            });
+            // Embed + save in small concurrent batches (Ollama cap)
+            for (let i = 0; i < jobs.length; i += 3) {
+              await Promise.allSettled(
+                jobs.slice(i, i + 3).map(async (job) => {
+                  job.title = dedupe(job.title);
+                  job.company = dedupe(job.company);
+                  job.location = dedupe(job.location);
+                  try {
+                    const embeddingText = `${job.title}\n${job.title}\n${job.description.slice(0, 1200)}`;
+                    const embedding = await generateEmbedding(embeddingText);
 
-            total++;
-            await send({ type: "job", data: { ...job, id: saved.id, favourited: saved.favourited } });
+                    const saved = await prisma.jobPosting.upsert({
+                      where: { sourceUrl: job.sourceUrl },
+                      create: {
+                        title: job.title,
+                        company: job.company,
+                        location: job.location ?? "Remote",
+                        description: job.description,
+                        sourceUrl: job.sourceUrl,
+                        source: job.source,
+                        salary: job.salary ?? null,
+                        postedAt: job.postedAt ?? null,
+                        embedding,
+                      },
+                      update: {
+                        title: job.title,
+                        description: job.description,
+                        scrapedAt: new Date(),
+                        embedding,
+                      },
+                    });
+
+                    const similarity = cosineSimilarity(queryEmbedding, embedding);
+                    collectedJobs.push({
+                      job: { ...job, id: saved.id, favourited: saved.favourited },
+                      similarity,
+                    });
+                  } catch (err) {
+                    console.error(`[scrape] Failed to save job ${job.sourceUrl}:`, err);
+                  }
+                }),
+              );
+            }
           } catch (err) {
-            // Skip individual job failures silently
-            console.error(`[scrape] Failed to save job ${job.sourceUrl}:`, err);
+            const message = err instanceof Error ? err.message : "Unknown error";
+            await send({ type: "error", site: scraper.name, message });
           }
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
-        await send({ type: "error", site: scraper.name, message });
-      }
-    }
+        }),
+      );
 
-    await send({ type: "complete", total });
-    await writer.close();
+      // Step 2: rank by similarity and stream in order
+      await send({ type: "progress", site: "Search", message: "Ranking results…" });
+      collectedJobs.sort((a, b) => b.similarity - a.similarity);
+
+      for (const { job, similarity } of collectedJobs) {
+        await send({ type: "job", data: { ...job, similarity } });
+      }
+
+      await send({ type: "complete", total: collectedJobs.length });
+    } catch (err) {
+      await send({ type: "error", site: "Search", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      await writer.close();
+    }
   })();
 
   return new Response(stream.readable, {

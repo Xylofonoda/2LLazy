@@ -1,0 +1,125 @@
+/**
+ * Shared UI types used across pages and components.
+ * Keep separate from src/lib/scrapers/types.ts (backend scraper types).
+ */
+
+export type AppStatus = "PENDING" | "APPLIED" | "REJECTED" | "INTERVIEW" | "FAILED";
+
+export const ALL_STATUSES: AppStatus[] = [
+  "PENDING",
+  "APPLIED",
+  "REJECTED",
+  "INTERVIEW",
+  "FAILED",
+];
+
+export const STATUS_COLOR: Record<
+  AppStatus,
+  "default" | "info" | "success" | "error" | "warning"
+> = {
+  PENDING: "default",
+  APPLIED: "info",
+  REJECTED: "error",
+  INTERVIEW: "success",
+  FAILED: "warning",
+};
+
+export type SourceChipColor =
+  | "primary"
+  | "secondary"
+  | "success"
+  | "warning"
+  | "info"
+  | "error"
+  | "default";
+
+export const SOURCE_COLOR: Record<string, SourceChipColor> = {
+  LINKEDIN: "primary",
+  INDEED: "info",
+  STARTUPJOBS: "success",
+  JOBSTACK: "warning",
+};
+
+/** Unified job item used in search results and favourites. */
+export interface JobItem {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  description: string;
+  sourceUrl: string;
+  source: string;
+  salary?: string;
+  /** Only present on search results (0–1 cosine similarity). */
+  similarity?: number;
+  favourited?: boolean;
+  /** Latest generated cover letter for this job, if any. */
+  coverLetter?: { id: string; content: string } | null;
+}
+
+export interface ApplicationInterview {
+  id: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  notes: string | null;
+}
+
+export interface Application {
+  id: string;
+  status: AppStatus;
+  appliedAt: string | null;
+  errorMessage: string | null;
+  job: {
+    id: string;
+    title: string;
+    company: string;
+    location: string;
+    source: string;
+    sourceUrl: string;
+    salary: string | null;
+  };
+  coverLetter: { id: string; content: string } | null;
+  interview: ApplicationInterview | null;
+}
+
+export interface Interview {
+  id: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  timezone: string;
+  notes: string | null;
+  application: {
+    id: string;
+    job: { title: string; company: string };
+  };
+}
+
+export interface ScheduleInterviewForm {
+  applicationId: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  notes: string;
+}
+
+// ─── Settings types ───────────────────────────────────────────────────────────
+
+export interface SiteCredStatus {
+  site: string;
+  configured: boolean;
+  username: string | null;
+}
+
+export interface UploadedFile {
+  filename: string;
+  size: number;
+  uploadedAt: string;
+}
+
+export interface UserProfile {
+  name: string;
+  email: string;
+  phone: string;
+  linkedInUrl: string;
+  githubUrl: string;
+  coverLetterLanguage: string;
+}

@@ -2,36 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { generateEmbedding, generateCoverLetter } from "@/lib/ollama";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { checkOllamaHealth } from "@/lib/ollama";
-import fs from "fs";
-import path from "path";
+import { findCvFile, readFileText } from "@/lib/cv";
+import { cosineSimilarity } from "@/lib/similarity";
 import { applyToJobSite } from "@/lib/apply/applyRouter";
 import { ApplicationStatus, SiteName } from "@prisma/client";
-
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
-
-function findCvFile(): string | null {
-  if (!fs.existsSync(UPLOADS_DIR)) return null;
-  const files = fs.readdirSync(UPLOADS_DIR).filter((f) =>
-    /cv|resume/i.test(f) && /\.(pdf|docx|doc|txt)$/i.test(f)
-  );
-  return files[0] ? path.join(UPLOADS_DIR, files[0]) : null;
-}
-
-async function readFileText(filePath: string): Promise<string> {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === ".txt") {
-    return fs.readFileSync(filePath, "utf-8");
-  }
-  if (ext === ".pdf") {
-    // Dynamic import to avoid issues
-    const pdfParse = (await import("pdf-parse")).default;
-    const buffer = fs.readFileSync(filePath);
-    const data = await pdfParse(buffer);
-    return data.text;
-  }
-  // For DOCX return empty — user should provide a .txt or .pdf CV for best results
-  return fs.readFileSync(filePath, "utf-8").replace(/[^\x20-\x7E\n]/g, " ");
-}
 
 export const resolvers = {
   Query: {
@@ -42,19 +16,8 @@ export const resolvers = {
       const text = `${query} ${skillLevel}`.trim();
       const queryEmbedding = await generateEmbedding(text);
 
-      const allJobs = await prisma.jobPosting.findMany();
+      const allJobs = await prisma.jobPosting.findMany({ where: { embedding: { not: [] } } });
       const jobs = allJobs.filter((j) => j.embedding !== null);
-
-      const cosineSimilarity = (a: number[], b: number[]): number => {
-        let dot = 0, magA = 0, magB = 0;
-        for (let i = 0; i < a.length; i++) {
-          dot += a[i] * b[i];
-          magA += a[i] * a[i];
-          magB += b[i] * b[i];
-        }
-        return magA && magB ? dot / (Math.sqrt(magA) * Math.sqrt(magB)) : 0;
-      };
-
       return jobs
         .map((job) => ({
           ...job,
@@ -115,7 +78,7 @@ export const resolvers = {
 
     getSiteCredentials: async () => {
       const creds = await prisma.siteCredential.findMany();
-      const sites: SiteName[] = ["LINKEDIN", "INDEED"];
+      const sites: SiteName[] = ["LINKEDIN"];
       return sites.map((site) => {
         const found = creds.find((c) => c.site === site);
         return {
@@ -155,7 +118,6 @@ export const resolvers = {
     ) => {
       const job = await prisma.jobPosting.findUniqueOrThrow({ where: { id: jobId } });
 
-      // Check not already applied
       const existing = await prisma.application.findFirst({
         where: { jobId, status: { in: ["APPLIED", "PENDING"] } },
       });
@@ -166,7 +128,6 @@ export const resolvers = {
         include: { job: true, coverLetter: true, interview: true },
       });
 
-      // Fire actual apply in background
       applyToJobSite(job, application.id, coverLetterId).catch(async (err) => {
         await prisma.application.update({
           where: { id: application.id },
@@ -204,7 +165,6 @@ export const resolvers = {
         notes?: string;
       }
     ) => {
-      // Update application status to INTERVIEW
       await prisma.application.update({
         where: { id: applicationId },
         data: { status: "INTERVIEW" },
@@ -266,16 +226,29 @@ export const resolvers = {
         }
       }
 
+      const userProfile = await prisma.userProfile.findFirst({
+        select: { coverLetterLanguage: true },
+      });
+      const language = userProfile?.coverLetterLanguage ?? "English";
+
       const content = await generateCoverLetter(
         job.title,
         job.company,
         job.description,
-        cvText
+        cvText,
+        language,
       );
 
-      return prisma.coverLetter.create({
-        data: { jobId, content, generatedByAI: true },
-      });
+      const [coverLetter] = await prisma.$transaction([
+        prisma.coverLetter.create({
+          data: { jobId, content, generatedByAI: true },
+        }),
+        prisma.jobPosting.update({
+          where: { id: jobId },
+          data: { favourited: true },
+        }),
+      ]);
+      return coverLetter;
     },
 
     saveSiteCredentials: async (

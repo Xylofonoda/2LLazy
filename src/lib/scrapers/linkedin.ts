@@ -1,6 +1,8 @@
 import { getAuthenticatedPage, randomDelay } from "@/lib/auth/sessionManager";
 import { getBrowser } from "@/lib/browser";
 import { ScrapedJob } from "./types";
+import { batchProcess } from "./utils";
+import { extractJobFromText } from "./extract";
 
 export async function scrapeLinkedIn(
   query: string,
@@ -49,7 +51,6 @@ export async function scrapeLinkedIn(
       )
       .catch(() => null);
 
-    // Scroll to load more jobs
     for (let i = 0; i < 3; i++) {
       await page.evaluate(() => window.scrollBy(0, 800));
       await randomDelay(800, 1500);
@@ -62,19 +63,18 @@ export async function scrapeLinkedIn(
     if (cards.length === 0)
       cards = await page.$$(".jobs-search__results-list li");
 
-    for (const card of cards.slice(0, 20)) {
+    type CardSeed = { title: string; company: string; location: string; absoluteHref: string; sourceUrl: string };
+    const seeds: CardSeed[] = [];
+
+    for (const card of cards.slice(0, 10)) {
       try {
-        // Extract title from aria-label (clean) or first text node only,
-        // to avoid "with verification" badge text that sits inside the same <a>
         const title =
           (await card
             .$eval(
               ".job-card-list__title--link, .artdeco-entity-lockup__title, .base-search-card__title",
               (e) => {
                 const el = e as HTMLElement;
-                // Prefer aria-label — it's always the clean job title
                 if (el.getAttribute("aria-label")) return el.getAttribute("aria-label")!.trim();
-                // Fallback: first direct text node only (skips child badge elements)
                 for (const node of Array.from(el.childNodes)) {
                   if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
                     return node.textContent.trim();
@@ -85,7 +85,6 @@ export async function scrapeLinkedIn(
             )
             .catch(() => "")) ?? "";
 
-        // Company
         const company =
           (await card
             .$eval(
@@ -94,7 +93,6 @@ export async function scrapeLinkedIn(
             )
             .catch(() => "")) ?? "";
 
-        // Location
         const location =
           (await card
             .$eval(
@@ -103,7 +101,6 @@ export async function scrapeLinkedIn(
             )
             .catch(() => "Remote")) ?? "Remote";
 
-        // Link href
         const href =
           (await card
             .$eval(
@@ -114,49 +111,47 @@ export async function scrapeLinkedIn(
 
         if (!title || !href) continue;
 
-        // Build an absolute URL. LinkedIn authenticated pages return relative hrefs.
         const absoluteHref = href.startsWith("http")
           ? href
           : `https://www.linkedin.com${href}`;
-
-        // Keep the full URL including query params — stripping them breaks
-        // authenticated job links that encode the job ID in the query string.
-        // But normalise to a canonical /jobs/view/{id}/ form when possible.
         const jobIdMatch = absoluteHref.match(/\/jobs\/view\/(\d+)/);
         const sourceUrl = jobIdMatch
           ? `https://www.linkedin.com/jobs/view/${jobIdMatch[1]}/`
           : absoluteHref;
 
-        // Get description from detail page
-        let description = "";
-        try {
-          const detailPage = await page.context().newPage();
-          await detailPage.goto(absoluteHref, { waitUntil: "domcontentloaded" });
-          await randomDelay(1500, 2500);
-          description =
-            (await detailPage
-              .$eval(
-                "#job-details, .jobs-description__content .jobs-box__html-content, .jobs-description-content__text, .description__text",
-                (e) => e.textContent?.trim(),
-              )
-              .catch(() => "")) ?? "";
-          await detailPage.close();
-        } catch {
-          // skip
-        }
-
-        jobs.push({
-          title,
-          company,
-          location,
-          description,
-          sourceUrl,
-          source: "LINKEDIN",
-        });
+        seeds.push({ title, company, location, absoluteHref, sourceUrl });
       } catch {
         // skip
       }
     }
+
+    const batchedJobs = await batchProcess(seeds, 3, async (seed) => {
+      const detailPage = await page.context().newPage();
+      try {
+        await detailPage.goto(seed.absoluteHref, { waitUntil: "domcontentloaded" });
+        await randomDelay(800, 1500);
+        const detailText = await detailPage.evaluate(
+          () => (document.body as HTMLElement).innerText ?? "",
+        );
+        const extracted = await extractJobFromText(detailText, {
+          url: seed.absoluteHref,
+          title: seed.title,
+          company: seed.company,
+          location: seed.location,
+        });
+        return {
+          title: seed.title,
+          company: seed.company,
+          location: seed.location,
+          description: extracted.description,
+          sourceUrl: seed.sourceUrl,
+          source: "LINKEDIN" as const,
+        };
+      } finally {
+        await detailPage.close();
+      }
+    });
+    jobs.push(...batchedJobs);
   } finally {
     if (ownContext) {
       await page.context().close();

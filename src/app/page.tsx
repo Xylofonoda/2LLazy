@@ -12,34 +12,17 @@ import {
   InputLabel,
   Card,
   CardContent,
-  CardActions,
-  Chip,
   LinearProgress,
   Stack,
-  Alert,
-  IconButton,
-  Tooltip,
-  Divider,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import SendIcon from "@mui/icons-material/Send";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import BookmarkIcon from "@mui/icons-material/Bookmark";
-import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
+import { JobCard } from "@/components/jobs/JobCard";
+import { JobFilterBar, type JobFilters, DEFAULT_JOB_FILTERS } from "@/components/jobs/JobFilterBar";
+import { StreamingCoverLetterDialog } from "@/components/dialogs/StreamingCoverLetterDialog";
+import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
+import type { JobItem } from "@/types";
 
-interface JobResult {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  description: string;
-  sourceUrl: string;
-  source: string;
-  salary?: string;
-  similarity?: number;
-  favourited?: boolean;
-}
+type JobResult = JobItem;
 
 interface ScrapeEvent {
   type: "progress" | "job" | "complete" | "error";
@@ -50,23 +33,22 @@ interface ScrapeEvent {
 }
 
 const SKILL_LEVELS = ["Junior", "Mid", "Senior", "Lead", "Any"];
-const SOURCE_COLOR: Record<string, "primary" | "secondary" | "success" | "warning" | "info" | "error"> = {
-  LINKEDIN: "primary",
-  INDEED: "info",
-  STARTUPJOBS: "success",
-  JOBSTACK: "warning",
-};
 
 export default function SearchPage() {
-  const [query, setQuery] = useState("");
-  const [skillLevel, setSkillLevel] = useState("Mid");
+  const queryInputRef = useRef<HTMLInputElement>(null);
+  const [skillLevel, setSkillLevel] = useState("Any");
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
   const [scraping, setScraping] = useState(false);
   const [applyingId, setApplyingId] = useState<string | null>(null);
-  const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
+  const [filters, setFilters] = useState<JobFilters>(DEFAULT_JOB_FILTERS);
+  const [streamDlg, setStreamDlg] = useState<{ open: boolean; jobId: string | null; jobTitle: string }>({
+    open: false,
+    jobId: null,
+    jobTitle: "",
+  });
   const abortRef = useRef<AbortController | null>(null);
 
   // Restore last search session when navigating back to this page
@@ -82,7 +64,7 @@ export default function SearchPage() {
           errors?: string[];
         };
         if (p.jobs?.length) setJobs(p.jobs);
-        if (p.query) setQuery(p.query);
+        if (p.query && queryInputRef.current) queryInputRef.current.value = p.query;
         if (p.skillLevel) setSkillLevel(p.skillLevel);
         // Only restore a terminal progress message, not a mid-scrape one
         if (p.progress && !p.progress.startsWith("Scraping") && !p.progress.startsWith("Starting")) {
@@ -93,21 +75,44 @@ export default function SearchPage() {
     } catch { /* corrupt / unavailable */ }
   }, []);
 
-  // Persist state to sessionStorage whenever it changes
+  // Persist the job list only when it actually changes (avoids stringify on every keystroke)
   useEffect(() => {
-    if (scraping) return; // don't snapshot mid-scrape
+    if (scraping || !jobs.length) return;
     try {
+      const existing = sessionStorage.getItem("job_search_session");
+      const parsed = existing ? JSON.parse(existing) : {};
       sessionStorage.setItem(
         "job_search_session",
-        JSON.stringify({ jobs, query, skillLevel, progress, errors }),
+        JSON.stringify({ ...parsed, jobs }),
       );
     } catch { /* storage quota exceeded */ }
-  }, [jobs, query, skillLevel, progress, errors, scraping]);
+  }, [jobs, scraping]);
+
+  // Persist cheap scalar values when they change (query is saved at search-submit time, not here)
+  useEffect(() => {
+    if (scraping) return;
+    try {
+      const existing = sessionStorage.getItem("job_search_session");
+      const parsed = existing ? JSON.parse(existing) : {};
+      sessionStorage.setItem(
+        "job_search_session",
+        JSON.stringify({ ...parsed, skillLevel, progress, errors }),
+      );
+    } catch { /* storage quota exceeded */ }
+  }, [skillLevel, progress, errors, scraping]);
 
   const handleSearch = async () => {
-    if (scraping || !query.trim()) return; // guard against double-submit (button + Enter)
+    const q = queryInputRef.current?.value.trim() ?? "";
+    if (scraping || !q) return; // guard against double-submit (button + Enter)
+    // Save query to session at submit time so it restores on navigation
+    try {
+      const existing = sessionStorage.getItem("job_search_session");
+      const parsed = existing ? JSON.parse(existing) : {};
+      sessionStorage.setItem("job_search_session", JSON.stringify({ ...parsed, query: q }));
+    } catch { /* storage quota exceeded */ }
     setJobs([]);
     setErrors([]);
+    setFilters(DEFAULT_JOB_FILTERS);
     setScraping(true);
     setProgress("Starting scrape...");
 
@@ -117,7 +122,7 @@ export default function SearchPage() {
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, skillLevel }),
+        body: JSON.stringify({ query: q, skillLevel }),
         signal: abortRef.current.signal,
       });
 
@@ -199,7 +204,11 @@ export default function SearchPage() {
       const data = await res.json();
       if (data.errors) throw new Error(data.errors[0].message);
       const updated: { id: string; favourited: boolean } = data.data.toggleFavourite;
-      setJobs((prev) => prev.map((j) => j.id === updated.id ? { ...j, favourited: updated.favourited } : j));
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === updated.id ? { ...j, favourited: updated.favourited } : j,
+        ),
+      );
     } catch (err) {
       setErrors((prev) => [...prev, `Favourite failed: ${String(err)}`]);
     } finally {
@@ -221,31 +230,39 @@ export default function SearchPage() {
       const data = await res.json();
       if (data.errors) throw new Error(data.errors[0].message);
     } catch (err) {
-      setErrors((prev) => [...prev, `Apply failed for ${job.title}: ${String(err)}`]);
+      setErrors((prev) => [
+        ...prev,
+        `Apply failed for ${job.title}: ${String(err)}`,
+      ]);
     } finally {
       setApplyingId(null);
     }
   };
 
-  const handleGenerateCoverLetter = async (job: JobResult) => {
-    setGeneratingId(job.id);
-    try {
-      const res = await fetch("/api/graphql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: `mutation GenCL($jobId: ID!) { generateCoverLetter(jobId: $jobId) { id content } }`,
-          variables: { jobId: job.id },
-        }),
-      });
-      const data = await res.json();
-      if (data.errors) throw new Error(data.errors[0].message);
-    } catch (err) {
-      setErrors((prev) => [...prev, `Cover letter failed: ${String(err)}`]);
-    } finally {
-      setGeneratingId(null);
-    }
+  const handleGenerateCoverLetter = (job: JobResult) => {
+    setStreamDlg({ open: true, jobId: job.id, jobTitle: job.title });
   };
+
+  const handleStreamComplete = (jobId: string) => {
+    setStreamDlg({ open: false, jobId: null, jobTitle: "" });
+    setJobs((prev) =>
+      prev.map((j) => (j.id === jobId ? { ...j, favourited: true } : j)),
+    );
+  };
+
+  const filteredJobs = jobs.filter((job) => {
+    if (filters.source !== "ALL" && job.source !== filters.source) return false;
+    if (filters.hasSalary && !job.salary) return false;
+    if (filters.position.trim()) {
+      const q = filters.position.toLowerCase();
+      if (
+        !job.title.toLowerCase().includes(q) &&
+        !job.company.toLowerCase().includes(q)
+      )
+        return false;
+    }
+    return true;
+  });
 
   return (
     <Box>
@@ -253,33 +270,48 @@ export default function SearchPage() {
         Find &amp; Apply to Jobs
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Enter a role and skill level. Results are focused on Czechia and ranked by semantic similarity.
+        Enter a role and skill level. Results are focused on Czechia and ranked
+        by semantic similarity.
       </Typography>
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="flex-end">
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={2}
+            alignItems="flex-end"
+          >
             <TextField
               label="Job Position"
               placeholder="e.g. Frontend Developer, Data Engineer"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !scraping && handleSearch()}
+              inputRef={queryInputRef}
+              defaultValue=""
+              onKeyDown={(e) =>
+                e.key === "Enter" && !scraping && handleSearch()
+              }
               fullWidth
               variant="outlined"
               size="small"
             />
             <FormControl size="small" sx={{ minWidth: 130 }}>
               <InputLabel>Skill Level</InputLabel>
-              <Select value={skillLevel} label="Skill Level" onChange={(e) => setSkillLevel(e.target.value)}>
-                {SKILL_LEVELS.map((l) => <MenuItem key={l} value={l}>{l}</MenuItem>)}
+              <Select
+                value={skillLevel}
+                label="Skill Level"
+                onChange={(e) => setSkillLevel(e.target.value)}
+              >
+                {SKILL_LEVELS.map((l) => (
+                  <MenuItem key={l} value={l}>
+                    {l}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
             <Button
               variant="contained"
               startIcon={<SearchIcon />}
               onClick={handleSearch}
-              disabled={scraping || !query.trim()}
+              disabled={scraping}
               sx={{ minWidth: 120, height: 40 }}
             >
               {scraping ? "Searching..." : "Search"}
@@ -287,73 +319,56 @@ export default function SearchPage() {
           </Stack>
           {scraping && <LinearProgress sx={{ mt: 2 }} />}
           {progress && (
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 1, display: "block" }}
+            >
               {progress}
             </Typography>
           )}
         </CardContent>
       </Card>
 
-      {errors.map((e, i) => (
-        <Alert key={i} severity="warning" sx={{ mb: 1 }} onClose={() => setErrors((prev) => prev.filter((_, j) => j !== i))}>
-          {e}
-        </Alert>
-      ))}
+      <ErrorAlertList
+        errors={errors}
+        onDismiss={(i) => setErrors((prev) => prev.filter((_, j) => j !== i))}
+      />
 
-      {jobs.length > 0 && <Typography variant="h6" sx={{ mb: 2 }}>{jobs.length} results</Typography>}
+      {jobs.length > 0 && (
+        <>
+          <JobFilterBar jobs={jobs} filters={filters} onChange={setFilters} />
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            {filteredJobs.length === jobs.length
+              ? `${jobs.length} results`
+              : `${filteredJobs.length} of ${jobs.length} results`}
+          </Typography>
+        </>
+      )}
 
       <Stack spacing={2}>
-        {jobs.map((job) => (
-          <Card key={job.id}>
-            <CardContent sx={{ pb: 1 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                <Box>
-                  <Typography variant="h6" sx={{ fontSize: 16 }}>{job.title}</Typography>
-                  <Typography variant="body2" color="text.secondary">{job.company} · {job.location}</Typography>
-                </Box>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  {job.similarity !== undefined && (
-                    <Chip label={`${(job.similarity * 100).toFixed(0)}% match`} size="small" color="success" variant="outlined" />
-                  )}
-                  <Chip label={job.source} size="small" color={SOURCE_COLOR[job.source] ?? "default"} variant="outlined" />
-                </Stack>
-              </Stack>
-              {job.salary && <Typography variant="body2" color="success.main" sx={{ mt: 0.5 }}>{job.salary}</Typography>}
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ mt: 1, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}
-              >
-                {job.description || "No description available."}
-              </Typography>
-            </CardContent>
-            <Divider />
-            <CardActions sx={{ px: 2, py: 1 }}>
-              <Button size="small" variant="contained" startIcon={<SendIcon />} onClick={() => handleApply(job)} disabled={applyingId === job.id}>
-                {applyingId === job.id ? "Applying..." : "Auto-Apply"}
-              </Button>
-              <Button size="small" variant="outlined" startIcon={<AutoAwesomeIcon />} onClick={() => handleGenerateCoverLetter(job)} disabled={generatingId === job.id}>
-                {generatingId === job.id ? "Generating..." : "Gen Cover Letter"}
-              </Button>
-              <Tooltip title={job.favourited ? "Remove from favourites" : "Save to favourites"}>
-                <IconButton
-                  size="small"
-                  onClick={() => handleToggleFavourite(job)}
-                  disabled={togglingId === job.id}
-                  sx={{ ml: "auto", color: job.favourited ? "warning.main" : "text.secondary" }}
-                >
-                  {job.favourited ? <BookmarkIcon fontSize="small" /> : <BookmarkBorderIcon fontSize="small" />}
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Open job posting">
-                <IconButton size="small" component="a" href={job.sourceUrl} target="_blank" rel="noopener noreferrer">
-                  <OpenInNewIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </CardActions>
-          </Card>
+        {filteredJobs.map((job) => (
+          <JobCard
+            key={job.id}
+            job={job}
+            isApplying={applyingId === job.id}
+            isGenerating={streamDlg.open && streamDlg.jobId === job.id}
+            isToggling={togglingId === job.id}
+            onApply={handleApply}
+            onGenerateCoverLetter={handleGenerateCoverLetter}
+            onToggleFavourite={handleToggleFavourite}
+          />
         ))}
       </Stack>
+
+      <StreamingCoverLetterDialog
+        open={streamDlg.open}
+        jobId={streamDlg.jobId}
+        jobTitle={streamDlg.jobTitle}
+        onClose={() => setStreamDlg({ open: false, jobId: null, jobTitle: "" })}
+        onComplete={() => handleStreamComplete(streamDlg.jobId ?? "")}
+      />
     </Box>
   );
 }
+
