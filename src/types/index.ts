@@ -101,6 +101,26 @@ export interface ScheduleInterviewForm {
   notes: string;
 }
 
+/** Unified display entry for the calendar — covers linked interviews and free-form events. */
+export interface CalendarEntry {
+  id: string;
+  type: "interview" | "event";
+  /** For event: user-supplied title. For interview: company name. */
+  title: string;
+  /** For interview: job title. Undefined for events. */
+  subtitle?: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  notes: string | null;
+}
+
+export interface CalendarEventForm {
+  title: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  notes: string;
+}
+
 // ─── Settings types ───────────────────────────────────────────────────────────
 
 export interface SiteCredStatus {

@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </List>
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3, overflow: "auto" }}>
+      <Box component="main" sx={{ flexGrow: 1, p: 3, overflow: "auto", bgcolor: "background.default" }}>
         {children}
       </Box>
     </Box>

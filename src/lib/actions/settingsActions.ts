@@ -24,6 +24,14 @@ export async function saveSiteCredentials(
   revalidatePath("/settings");
 }
 
+export async function clearSiteCredentials(site: string): Promise<void> {
+  if (!VALID_SITES.includes(site as SiteName)) {
+    throw new Error(`Invalid site: ${site}`);
+  }
+  await prisma.siteCredential.deleteMany({ where: { site: site as SiteName } });
+  revalidatePath("/settings");
+}
+
 export async function saveUserProfile(profile: {
   name: string;
   email: string;

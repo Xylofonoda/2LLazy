@@ -1,31 +1,48 @@
 import { prisma } from "@/lib/prisma";
-import type { Interview } from "@/types";
+import type { CalendarEntry } from "@/types";
 
-export async function getInterviewsForMonth(
+export async function getCalendarEntriesForMonth(
   month: number,
   year: number,
-): Promise<Interview[]> {
+): Promise<CalendarEntry[]> {
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1);
 
-  const items = await prisma.interview.findMany({
-    where: { scheduledAt: { gte: start, lt: end } },
-    include: { application: { include: { job: true } } },
-    orderBy: { scheduledAt: "asc" },
-  });
+  const [interviews, events] = await Promise.all([
+    prisma.interview.findMany({
+      where: { scheduledAt: { gte: start, lt: end } },
+      include: { application: { include: { job: true } } },
+      orderBy: { scheduledAt: "asc" },
+    }),
+    prisma.calendarEvent.findMany({
+      where: { scheduledAt: { gte: start, lt: end } },
+      orderBy: { scheduledAt: "asc" },
+    }),
+  ]);
 
-  return items.map((iv) => ({
+  const interviewEntries: CalendarEntry[] = interviews.map((iv) => ({
     id: iv.id,
+    type: "interview",
+    title: iv.application.job.company,
+    subtitle: iv.application.job.title,
     scheduledAt: iv.scheduledAt.toISOString(),
     durationMinutes: iv.durationMinutes,
-    timezone: iv.timezone,
     notes: iv.notes,
-    application: {
-      id: iv.application.id,
-      job: {
-        title: iv.application.job.title,
-        company: iv.application.job.company,
-      },
-    },
   }));
+
+  const eventEntries: CalendarEntry[] = events.map((ev) => ({
+    id: ev.id,
+    type: "event",
+    title: ev.title,
+    scheduledAt: ev.scheduledAt.toISOString(),
+    durationMinutes: ev.durationMinutes,
+    notes: ev.notes,
+  }));
+
+  return [...interviewEntries, ...eventEntries].sort(
+    (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+  );
 }
+
+/** @deprecated Use getCalendarEntriesForMonth */
+export const getInterviewsForMonth = getCalendarEntriesForMonth;

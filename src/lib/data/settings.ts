@@ -13,6 +13,7 @@ export async function getSettingsData(): Promise<{
   profile: UserProfile;
   uploadedFiles: UploadedFile[];
   ollamaHealth: { ok: boolean; missing: string[] };
+  hasOpenAI: boolean;
 }> {
   const [creds, dbProfile, ollamaHealth] = await Promise.all([
     prisma.siteCredential.findMany(),
@@ -41,5 +42,5 @@ export async function getSettingsData(): Promise<{
     coverLetterLanguage: dbProfile?.coverLetterLanguage ?? "English",
   };
 
-  return { credentials, profile, uploadedFiles, ollamaHealth };
+  return { credentials, profile, uploadedFiles, ollamaHealth, hasOpenAI: Boolean(process.env.OPENAI_API_KEY?.trim()) };
 }

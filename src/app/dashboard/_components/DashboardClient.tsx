@@ -2,12 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Box, Typography, Stack } from "@mui/material";
-import { ApplicationCard } from "@/components/dashboard/ApplicationCard";
+import { Box, Typography } from "@mui/material";
 import { DashboardFilterBar, type DashboardFilters } from "@/components/dashboard/DashboardFilterBar";
 import { CoverLetterDialog } from "@/components/dialogs/CoverLetterDialog";
 import { StatusChangeDialog } from "@/components/dialogs/StatusChangeDialog";
 import { updateApplicationStatus } from "@/lib/actions/applicationActions";
+import { ApplicationList } from "./ApplicationList";
 import type { Application, AppStatus } from "@/types";
 
 interface Props {
@@ -70,26 +70,12 @@ export function DashboardClient({ initialApplications }: Props) {
         onChange={setFilters}
       />
 
-      {isPending && (
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: "block" }}>
-          Saving…
-        </Typography>
-      )}
-
-      <Stack spacing={2}>
-        {filtered.map((app) => (
-          <ApplicationCard
-            key={app.id}
-            application={app}
-            onStatusClick={(id, status) =>
-              setStatusDialog({ open: true, id, status })
-            }
-            onViewCoverLetter={(content) =>
-              setClDialog({ open: true, content })
-            }
-          />
-        ))}
-      </Stack>
+      <ApplicationList
+        applications={filtered}
+        isPending={isPending}
+        onStatusClick={(id, status) => setStatusDialog({ open: true, id, status })}
+        onViewCoverLetter={(content) => setClDialog({ open: true, content })}
+      />
 
       <CoverLetterDialog
         open={clDialog.open}

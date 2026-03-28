@@ -2,199 +2,171 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Stack,
-  Chip,
-  IconButton,
-  Button,
-} from "@mui/material";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import { Box, Typography, Stack, Button, Snackbar, Alert } from "@mui/material";
 import dayjs from "dayjs";
-import { ScheduleInterviewDialog } from "@/components/interviews/ScheduleInterviewDialog";
 import { InterviewDetailDialog } from "@/components/interviews/InterviewDetailDialog";
-import { scheduleInterview } from "@/lib/actions/interviewActions";
-import type { Interview, ScheduleInterviewForm } from "@/types";
+import { CalendarEventDialog } from "@/components/interviews/CalendarEventDialog";
+import {
+  createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent,
+} from "@/lib/actions/interviewActions";
+import { CalendarMonthNav } from "./CalendarMonthNav";
+import { CalendarGrid } from "./CalendarGrid";
+import type { CalendarEntry, CalendarEventForm } from "@/types";
 
-const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DEFAULT_FORM: CalendarEventForm = {
+  title: "",
+  scheduledAt: dayjs().format("YYYY-MM-DDTHH:mm"),
+  durationMinutes: 60,
+  notes: "",
+};
 
 interface Props {
-  initialInterviews: Interview[];
+  initialEntries: CalendarEntry[];
   month: number;
   year: number;
 }
 
-export function InterviewsClient({ initialInterviews, month, year }: Props) {
+export function InterviewsClient({ initialEntries, month, year }: Props) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
+  const [isNavigating, setIsNavigating] = useState(false);
 
-  const [scheduleDialog, setScheduleDialog] = useState(false);
-  const [detailDialog, setDetailDialog] = useState<Interview | null>(null);
-  const [form, setForm] = useState<ScheduleInterviewForm>({
-    applicationId: "",
-    scheduledAt: dayjs().format("YYYY-MM-DDTHH:mm"),
-    durationMinutes: 60,
-    notes: "",
-  });
+  const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
+  const [eventDialog, setEventDialog] = useState<{
+    open: boolean;
+    editId: string | null;
+    form: CalendarEventForm;
+  }>({ open: false, editId: null, form: DEFAULT_FORM });
+  const [isSaving, setIsSaving] = useState(false);
+  const [toast, setToast] = useState<{
+    message: string;
+    severity: "success" | "error";
+  } | null>(null);
 
   const currentMonth = dayjs(new Date(year, month - 1, 1));
-  const daysInMonth = currentMonth.daysInMonth();
-  const firstDayOfWeek = currentMonth.startOf("month").day();
-  const totalCells = Math.ceil((firstDayOfWeek + daysInMonth) / 7) * 7;
 
-  const interviewsByDay = initialInterviews.reduce<Record<number, Interview[]>>(
-    (acc, iv) => {
-      const d = dayjs(iv.scheduledAt).date();
-      acc[d] = [...(acc[d] ?? []), iv];
-      return acc;
-    },
-    {},
-  );
-
-  /** Navigate to a different month via URL search params → triggers RSC re-fetch. */
-  const goMonth = (delta: 1 | -1) => {
+  const navigateMonth = (delta: 1 | -1) => {
+    setIsNavigating(true);
     const next = currentMonth.add(delta, "month");
     router.push(`/interviews?month=${next.month() + 1}&year=${next.year()}`);
   };
 
-  const handleSchedule = () => {
+  const openCreateDialog = (scheduledAt: string = dayjs().format("YYYY-MM-DDTHH:mm")) => {
+    setEventDialog({ open: true, editId: null, form: { ...DEFAULT_FORM, scheduledAt } });
+  };
+
+  const openEditDialog = (entry: CalendarEntry) => {
+    setSelectedEntry(null);
+    setEventDialog({
+      open: true,
+      editId: entry.id,
+      form: {
+        title: entry.title,
+        scheduledAt: dayjs(entry.scheduledAt).format("YYYY-MM-DDTHH:mm"),
+        durationMinutes: entry.durationMinutes,
+        notes: entry.notes ?? "",
+      },
+    });
+  };
+
+  const closeEventDialog = () =>
+    setEventDialog({ open: false, editId: null, form: DEFAULT_FORM });
+
+  const handleSaveEvent = () => {
+    setIsSaving(true);
     startTransition(async () => {
-      await scheduleInterview(form);
-      router.refresh();
-      setScheduleDialog(false);
+      try {
+        if (eventDialog.editId) {
+          await updateCalendarEvent(eventDialog.editId, eventDialog.form);
+          setToast({ message: "Event updated.", severity: "success" });
+        } else {
+          await createCalendarEvent(eventDialog.form);
+          setToast({ message: "Event created.", severity: "success" });
+        }
+        closeEventDialog();
+        router.refresh();
+      } catch (err) {
+        setToast({ message: String(err), severity: "error" });
+      } finally {
+        setIsSaving(false);
+      }
+    });
+  };
+
+  const handleDeleteEvent = () => {
+    if (!eventDialog.editId) return;
+    const idToDelete = eventDialog.editId;
+    setIsSaving(true);
+    startTransition(async () => {
+      try {
+        await deleteCalendarEvent(idToDelete);
+        setToast({ message: "Event deleted.", severity: "success" });
+        closeEventDialog();
+        router.refresh();
+      } catch (err) {
+        setToast({ message: String(err), severity: "error" });
+      } finally {
+        setIsSaving(false);
+      }
     });
   };
 
   return (
     <Box>
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="center"
-        sx={{ mb: 3 }}
-      >
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Typography variant="h4">Interview Calendar</Typography>
-        <Button variant="contained" onClick={() => setScheduleDialog(true)}>
-          + Schedule Interview
+        <Button variant="contained" onClick={() => openCreateDialog()}>
+          + Add Event
         </Button>
       </Stack>
 
-      {/* Month nav */}
-      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
-        <IconButton onClick={() => goMonth(-1)} disabled={isPending}>
-          <ChevronLeftIcon />
-        </IconButton>
-        <Typography variant="h6" sx={{ minWidth: 160, textAlign: "center" }}>
-          {currentMonth.format("MMMM YYYY")}
-        </Typography>
-        <IconButton onClick={() => goMonth(1)} disabled={isPending}>
-          <ChevronRightIcon />
-        </IconButton>
-      </Stack>
+      <CalendarMonthNav
+        currentMonth={currentMonth}
+        isPending={isNavigating}
+        onPrev={() => navigateMonth(-1)}
+        onNext={() => navigateMonth(1)}
+      />
 
-      {/* Calendar grid */}
-      <Card>
-        <CardContent sx={{ p: 0 }}>
-          {/* Day headers */}
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            {DAYS_OF_WEEK.map((d) => (
-              <Box key={d} sx={{ py: 1, textAlign: "center" }}>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  fontWeight={600}
-                >
-                  {d}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-
-          {/* Calendar cells */}
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
-            {Array.from({ length: totalCells }).map((_, idx) => {
-              const dayNum = idx - firstDayOfWeek + 1;
-              const isCurrentMonth = dayNum > 0 && dayNum <= daysInMonth;
-              const today = dayjs();
-              const isToday =
-                isCurrentMonth &&
-                currentMonth.date(dayNum).isSame(today, "day");
-              const dayInterviews = isCurrentMonth
-                ? (interviewsByDay[dayNum] ?? [])
-                : [];
-
-              return (
-                <Box
-                  key={idx}
-                  sx={{
-                    minHeight: 80,
-                    p: 0.5,
-                    borderRight: "1px solid rgba(255,255,255,0.04)",
-                    borderBottom: "1px solid rgba(255,255,255,0.04)",
-                    cursor: isCurrentMonth ? "pointer" : "default",
-                    "&:hover": isCurrentMonth
-                      ? { bgcolor: "rgba(99,102,241,0.08)" }
-                      : {},
-                  }}
-                >
-                  {isCurrentMonth && (
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        display: "block",
-                        textAlign: "right",
-                        fontWeight: isToday ? 700 : 400,
-                        color: isToday ? "primary.main" : "text.secondary",
-                        mb: 0.5,
-                      }}
-                    >
-                      {dayNum}
-                    </Typography>
-                  )}
-                  <Stack spacing={0.5}>
-                    {dayInterviews.map((iv) => (
-                      <Chip
-                        key={iv.id}
-                        label={`${dayjs(iv.scheduledAt).format("HH:mm")} ${iv.application.job.company}`}
-                        size="small"
-                        color="success"
-                        sx={{ fontSize: 10, height: 20, cursor: "pointer" }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDetailDialog(iv);
-                        }}
-                      />
-                    ))}
-                  </Stack>
-                </Box>
-              );
-            })}
-          </Box>
-        </CardContent>
-      </Card>
-
-      <ScheduleInterviewDialog
-        open={scheduleDialog}
-        form={form}
-        onChange={setForm}
-        onClose={() => setScheduleDialog(false)}
-        onSubmit={handleSchedule}
+      <CalendarGrid
+        currentMonth={currentMonth}
+        entries={initialEntries}
+        onEntryClick={setSelectedEntry}
+        onDayDoubleClick={openCreateDialog}
       />
 
       <InterviewDetailDialog
-        interview={detailDialog}
-        onClose={() => setDetailDialog(null)}
+        entry={selectedEntry}
+        onClose={() => setSelectedEntry(null)}
+        onEdit={openEditDialog}
       />
+
+      <CalendarEventDialog
+        open={eventDialog.open}
+        form={eventDialog.form}
+        editId={eventDialog.editId}
+        isSaving={isSaving}
+        onChange={(form) => setEventDialog((prev) => ({ ...prev, form }))}
+        onClose={closeEventDialog}
+        onSubmit={handleSaveEvent}
+        onDelete={eventDialog.editId ? handleDeleteEvent : undefined}
+      />
+
+      <Snackbar
+        open={!!toast}
+        autoHideDuration={5000}
+        onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <Alert
+          severity={toast?.severity}
+          onClose={() => setToast(null)}
+          sx={{ width: "100%" }}
+        >
+          {toast?.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

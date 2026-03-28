@@ -1,4 +1,4 @@
-import { getInterviewsForMonth } from "@/lib/data/interviews";
+import { getCalendarEntriesForMonth } from "@/lib/data/interviews";
 import { InterviewsClient } from "./_components/InterviewsClient";
 
 export default async function InterviewsPage({
@@ -10,6 +10,6 @@ export default async function InterviewsPage({
   const today = new Date();
   const month = Number(params.month ?? today.getMonth() + 1);
   const year = Number(params.year ?? today.getFullYear());
-  const interviews = await getInterviewsForMonth(month, year);
-  return <InterviewsClient initialInterviews={interviews} month={month} year={year} />;
+  const entries = await getCalendarEntriesForMonth(month, year);
+  return <InterviewsClient initialEntries={entries} month={month} year={year} />;
 }

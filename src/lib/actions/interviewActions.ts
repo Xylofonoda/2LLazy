@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import type { ScheduleInterviewForm } from "@/types";
+import type { CalendarEventForm, ScheduleInterviewForm } from "@/types";
 
 export async function scheduleInterview(
   form: ScheduleInterviewForm,
@@ -30,4 +30,36 @@ export async function scheduleInterview(
 
   revalidatePath("/interviews");
   revalidatePath("/dashboard");
+}
+
+export async function createCalendarEvent(form: CalendarEventForm): Promise<void> {
+  if (!form.title.trim()) throw new Error("Event title is required.");
+  await prisma.calendarEvent.create({
+    data: {
+      title: form.title.trim(),
+      scheduledAt: new Date(form.scheduledAt),
+      durationMinutes: Math.max(5, form.durationMinutes),
+      notes: form.notes.trim() || null,
+    },
+  });
+  revalidatePath("/interviews");
+}
+
+export async function updateCalendarEvent(id: string, form: CalendarEventForm): Promise<void> {
+  if (!form.title.trim()) throw new Error("Event title is required.");
+  await prisma.calendarEvent.update({
+    where: { id },
+    data: {
+      title: form.title.trim(),
+      scheduledAt: new Date(form.scheduledAt),
+      durationMinutes: Math.max(5, form.durationMinutes),
+      notes: form.notes.trim() || null,
+    },
+  });
+  revalidatePath("/interviews");
+}
+
+export async function deleteCalendarEvent(id: string): Promise<void> {
+  await prisma.calendarEvent.delete({ where: { id } });
+  revalidatePath("/interviews");
 }

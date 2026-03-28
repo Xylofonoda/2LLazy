@@ -2,16 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Box, Typography, Stack } from "@mui/material";
-import { JobCard } from "@/components/jobs/JobCard";
+import { Box, Typography } from "@mui/material";
 import { JobFilterBar, type JobFilters, DEFAULT_JOB_FILTERS } from "@/components/jobs/JobFilterBar";
 import { CoverLetterDialog } from "@/components/dialogs/CoverLetterDialog";
 import { StreamingCoverLetterDialog } from "@/components/dialogs/StreamingCoverLetterDialog";
 import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
-import {
-  toggleFavourite,
-  applyToJob,
-} from "@/lib/actions/jobActions";
+import { toggleFavourite, applyToJob } from "@/lib/actions/jobActions";
+import { FavouritesJobList } from "./FavouritesJobList";
 import type { JobItem } from "@/types";
 
 interface Props {
@@ -100,36 +97,20 @@ export function FavouritesClient({ initialJobs }: Props) {
         onDismiss={(i) => setErrors((prev) => prev.filter((_, j) => j !== i))}
       />
 
-      <JobFilterBar
-        jobs={initialJobs}
-        filters={filters}
-        onChange={setFilters}
+      <JobFilterBar jobs={initialJobs} filters={filters} onChange={setFilters} />
+
+      <FavouritesJobList
+        jobs={filtered}
+        applyingId={applyingId}
+        togglingId={togglingId}
+        streamingJobId={streamDlg.open ? streamDlg.jobId : null}
+        onApply={handleApply}
+        onToggleFavourite={handleToggle}
+        onGenerateCoverLetter={handleGenerateCoverLetter}
+        onViewCoverLetter={(content, jobTitle) =>
+          setClDialog({ open: true, content, jobTitle })
+        }
       />
-
-      {initialJobs.length === 0 && (
-        <Typography color="text.secondary" sx={{ mt: 4, textAlign: "center" }}>
-          No favourites yet. Search for jobs and click the bookmark icon to save
-          them here.
-        </Typography>
-      )}
-
-      <Stack spacing={2}>
-        {filtered.map((job) => (
-          <JobCard
-            key={job.id}
-            job={{ ...job, favourited: true }}
-            isApplying={applyingId === job.id}
-            isGenerating={streamDlg.open && streamDlg.jobId === job.id}
-            isToggling={togglingId === job.id}
-            onApply={handleApply}
-            onGenerateCoverLetter={handleGenerateCoverLetter}
-            onToggleFavourite={handleToggle}
-            onViewCoverLetter={(content) =>
-              setClDialog({ open: true, content, jobTitle: job.title })
-            }
-          />
-        ))}
-      </Stack>
 
       <CoverLetterDialog
         open={clDialog.open}
