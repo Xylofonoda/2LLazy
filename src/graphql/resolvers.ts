@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { generateEmbedding, generateCoverLetter } from "@/lib/ollama";
-import { encrypt, decrypt } from "@/lib/crypto";
+import { encrypt } from "@/lib/crypto";
 import { checkOllamaHealth } from "@/lib/ollama";
 import { findCvFile, readFileText } from "@/lib/cv";
 import { cosineSimilarity } from "@/lib/similarity";
