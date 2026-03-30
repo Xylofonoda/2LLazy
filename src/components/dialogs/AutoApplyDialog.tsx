@@ -105,7 +105,7 @@ export function AutoApplyDialog({ application, open, onClose }: AutoApplyDialogP
         router.refresh();
         onClose();
       } else {
-        setError(data.errorMessage ?? "Application failed. You can try again or apply manually.");
+        setError("Couldn't auto-apply this time. Try applying yourself — good luck!");
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -113,7 +113,7 @@ export function AutoApplyDialog({ application, open, onClose }: AutoApplyDialogP
         onClose();
         return;
       }
-      setError("Network error — please try again.");
+      setError("Couldn't auto-apply this time. Try applying yourself — good luck!");
     } finally {
       abortRef.current = null;
       setApplying(false);

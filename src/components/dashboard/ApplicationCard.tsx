@@ -63,7 +63,7 @@ export function ApplicationCard({
                   color="error.main"
                   display="block"
                 >
-                  Error: {app.errorMessage}
+                  Couldn&apos;t auto-apply this time. Try applying yourself — good luck!
                 </Typography>
               )}
             </Box>
