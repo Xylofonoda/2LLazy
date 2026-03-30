@@ -1,24 +1,15 @@
-import fs from "fs";
-import path from "path";
+import { prisma } from "@/lib/prisma";
 
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
-
-export function findCvFile(): string | null {
-  if (!fs.existsSync(UPLOADS_DIR)) return null;
-  const files = fs
-    .readdirSync(UPLOADS_DIR)
-    .filter((f) => /cv|resume/i.test(f) && /\.(pdf|docx|doc|txt)$/i.test(f));
-  return files[0] ? path.join(UPLOADS_DIR, files[0]) : null;
-}
-
-export async function readFileText(filePath: string): Promise<string> {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === ".txt") return fs.readFileSync(filePath, "utf-8");
-  if (ext === ".pdf") {
+export async function readCvText(): Promise<string> {
+  const doc = await prisma.cvDocument.findFirst({ orderBy: { uploadedAt: "desc" } });
+  if (!doc) return "";
+  const ext = doc.originalName.split(".").pop()?.toLowerCase();
+  const buf = Buffer.from(doc.data);
+  if (ext === "txt") return buf.toString("utf-8");
+  if (ext === "pdf") {
     const pdfParse = (await import("pdf-parse")).default;
-    const buffer = fs.readFileSync(filePath);
-    const data = await pdfParse(buffer);
+    const data = await pdfParse(buf);
     return data.text;
   }
-  return fs.readFileSync(filePath, "utf-8").replace(/[^\x20-\x7E\n]/g, " ");
+  return buf.toString("utf-8").replace(/[^\x20-\x7E\n]/g, " ");
 }

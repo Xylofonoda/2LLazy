@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   Box,
   FormControl,
@@ -11,7 +12,6 @@ import {
   Switch,
   TextField,
 } from "@mui/material";
-import type { JobItem } from "@/types";
 
 export interface JobFilters {
   source: string;
@@ -26,19 +26,21 @@ export const DEFAULT_JOB_FILTERS: JobFilters = {
 };
 
 interface JobFilterBarProps {
-  jobs: JobItem[];
+  sources: string[];
   filters: JobFilters;
   onChange: (filters: JobFilters) => void;
 }
 
-export function JobFilterBar({ jobs, filters, onChange }: JobFilterBarProps) {
+export function JobFilterBar({ sources, filters, onChange }: JobFilterBarProps) {
   const set = <K extends keyof JobFilters>(key: K, value: JobFilters[K]) =>
     onChange({ ...filters, [key]: value });
 
-  const sources = [
-    "ALL",
-    ...Array.from(new Set(jobs.map((j) => j.source))).sort(),
-  ];
+  const [positionInput, setPositionInput] = useState(filters.position);
+  useEffect(() => setPositionInput(filters.position), [filters.position]);
+
+  const commitPosition = () => set("position", positionInput);
+
+  const allSources = ["ALL", ...sources];
 
   return (
     <Box sx={{ mb: 3 }}>
@@ -51,8 +53,10 @@ export function JobFilterBar({ jobs, filters, onChange }: JobFilterBarProps) {
         <TextField
           label="Position / Company"
           size="small"
-          value={filters.position}
-          onChange={(e) => set("position", e.target.value)}
+          value={positionInput}
+          onChange={(e) => setPositionInput(e.target.value)}
+          onBlur={commitPosition}
+          onKeyDown={(e) => e.key === "Enter" && commitPosition()}
           sx={{ minWidth: 220 }}
           placeholder="Search title or company…"
         />
@@ -66,7 +70,7 @@ export function JobFilterBar({ jobs, filters, onChange }: JobFilterBarProps) {
             label="Site"
             onChange={(e) => set("source", e.target.value)}
           >
-            {sources.map((src) => (
+            {allSources.map((src) => (
               <MenuItem key={src} value={src}>
                 {src === "ALL" ? "All Sites" : src}
               </MenuItem>

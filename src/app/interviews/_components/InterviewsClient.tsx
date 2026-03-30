@@ -31,7 +31,7 @@ interface Props {
 export function InterviewsClient({ initialEntries, month, year }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const [isNavigating, setIsNavigating] = useState(false);
+  const [isNavigating, startNavigation] = useTransition();
 
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
   const [eventDialog, setEventDialog] = useState<{
@@ -48,9 +48,10 @@ export function InterviewsClient({ initialEntries, month, year }: Props) {
   const currentMonth = dayjs(new Date(year, month - 1, 1));
 
   const navigateMonth = (delta: 1 | -1) => {
-    setIsNavigating(true);
-    const next = currentMonth.add(delta, "month");
-    router.push(`/interviews?month=${next.month() + 1}&year=${next.year()}`);
+    startNavigation(() => {
+      const next = currentMonth.add(delta, "month");
+      router.push(`/interviews?month=${next.month() + 1}&year=${next.year()}`);
+    });
   };
 
   const openCreateDialog = (scheduledAt: string = dayjs().format("YYYY-MM-DDTHH:mm")) => {

@@ -1,35 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
-import fs from "fs";
-
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+import { prisma } from "@/lib/prisma";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
 ) {
-  const { filename } = await params;
+  const { filename: id } = await params;
 
-  // Security: prevent directory traversal
-  const safeName = path.basename(filename);
-  if (!safeName || safeName !== filename) {
-    return new NextResponse("Forbidden", { status: 403 });
-  }
-
-  const filePath = path.join(UPLOADS_DIR, safeName);
-
-  // Ensure resolved path is still within uploads dir
-  const resolved = path.resolve(filePath);
-  if (!resolved.startsWith(path.resolve(UPLOADS_DIR))) {
-    return new NextResponse("Forbidden", { status: 403 });
-  }
-
-  if (!fs.existsSync(resolved)) {
+  const doc = await prisma.cvDocument.findUnique({ where: { id } });
+  if (!doc) {
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const buffer = fs.readFileSync(resolved);
-  const ext = path.extname(safeName).toLowerCase();
+  const ext = path.extname(doc.originalName).toLowerCase();
   const contentType =
     ext === ".pdf"
       ? "application/pdf"
@@ -37,10 +21,10 @@ export async function GET(
         ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         : "application/octet-stream";
 
-  return new NextResponse(buffer, {
+  return new NextResponse(Buffer.from(doc.data), {
     headers: {
       "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${safeName}"`,
+      "Content-Disposition": `attachment; filename="${doc.originalName}"`,
       "Cache-Control": "private, no-store",
     },
   });

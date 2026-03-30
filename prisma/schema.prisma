@@ -11,8 +11,6 @@ datasource db {
 
 enum JobSource {
   LINKEDIN
-  INDEED
-  GLASSDOOR
   STARTUPJOBS
   JOBSTACK
 }
@@ -27,7 +25,6 @@ enum ApplicationStatus {
 
 enum SiteName {
   LINKEDIN
-  INDEED
 }
 
 model UserProfile {
@@ -113,4 +110,12 @@ model SiteCredential {
   encryptedPassword String
   cookieJson        String?  @db.Text
   updatedAt         DateTime @updatedAt
+}
+
+model CvDocument {
+  id           String   @id @default(cuid())
+  originalName String
+  data         Bytes
+  size         Int
+  uploadedAt   DateTime @default(now())
 }

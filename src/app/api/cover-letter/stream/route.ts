@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateCoverLetterStream } from "@/lib/ollama";
-import { findCvFile, readFileText } from "@/lib/cv";
+import { readCvText } from "@/lib/cv";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -24,9 +24,7 @@ export async function POST(req: NextRequest) {
   });
   const language = userProfile?.coverLetterLanguage ?? "English";
 
-  let cvText = "";
-  const cvFile = findCvFile();
-  if (cvFile) cvText = await readFileText(cvFile).catch(() => "");
+  const cvText = await readCvText().catch(() => "");
 
   const encoder = new TextEncoder();
   const transform = new TransformStream<Uint8Array, Uint8Array>();

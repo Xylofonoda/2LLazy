@@ -14,6 +14,8 @@ import {
   CardContent,
   LinearProgress,
   Stack,
+  Skeleton,
+  GlobalStyles,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { JobCard } from "@/components/jobs/JobCard";
@@ -50,6 +52,11 @@ export default function SearchPage() {
     jobTitle: "",
   });
   const abortRef = useRef<AbortController | null>(null);
+  // Track which job IDs arrived via the live SSE stream (not restored from sessionStorage)
+  const newJobIdsRef = useRef<Set<string>>(new Set());
+  // Maps job ID → arrival index so we can stagger the entrance animation delay
+  const jobArrivalIndexRef = useRef<Map<string, number>>(new Map());
+  const arrivalCountRef = useRef(0);
 
   // Restore last search session when navigating back to this page
   useEffect(() => {
@@ -63,7 +70,7 @@ export default function SearchPage() {
           progress?: string;
           errors?: string[];
         };
-        if (p.jobs?.length) setJobs(p.jobs);
+        if (p.jobs?.length) setJobs(p.jobs.map((j) => ({ ...j, description: j.description ? j.description + "…" : "" })));
         if (p.query && queryInputRef.current) queryInputRef.current.value = p.query;
         if (p.skillLevel) setSkillLevel(p.skillLevel);
         // Only restore a terminal progress message, not a mid-scrape one
@@ -83,7 +90,7 @@ export default function SearchPage() {
       const parsed = existing ? JSON.parse(existing) : {};
       sessionStorage.setItem(
         "job_search_session",
-        JSON.stringify({ ...parsed, jobs }),
+        JSON.stringify({ ...parsed, jobs: jobs.map(({ description, ...rest }) => ({ ...rest, description: description?.slice(0, 300) ?? "" })) }),
       );
     } catch { /* storage quota exceeded */ }
   }, [jobs, scraping]);
@@ -113,6 +120,9 @@ export default function SearchPage() {
     setJobs([]);
     setErrors([]);
     setFilters(DEFAULT_JOB_FILTERS);
+    newJobIdsRef.current = new Set();
+    jobArrivalIndexRef.current = new Map();
+    arrivalCountRef.current = 0;
     setScraping(true);
     setProgress("Starting scrape...");
 
@@ -150,6 +160,11 @@ export default function SearchPage() {
             if (event.type === "progress") {
               setProgress(event.message ?? null);
             } else if (event.type === "job" && event.data) {
+              const jobId = event.data.id;
+              if (!newJobIdsRef.current.has(jobId)) {
+                newJobIdsRef.current.add(jobId);
+                jobArrivalIndexRef.current.set(jobId, arrivalCountRef.current++);
+              }
               setJobs((prev) => {
                 const exists = prev.some((j) => j.id === event.data!.id);
                 return exists ? prev : [...prev, event.data!];
@@ -266,6 +281,14 @@ export default function SearchPage() {
 
   return (
     <Box>
+      <GlobalStyles
+        styles={{
+          "@keyframes jobSlideIn": {
+            from: { opacity: 0, transform: "translateY(18px)" },
+            to: { opacity: 1, transform: "translateY(0)" },
+          },
+        }}
+      />
       <Typography variant="h4" gutterBottom>
         Find &amp; Apply to Jobs
       </Typography>
@@ -337,7 +360,7 @@ export default function SearchPage() {
 
       {jobs.length > 0 && (
         <>
-          <JobFilterBar jobs={jobs} filters={filters} onChange={setFilters} />
+          <JobFilterBar sources={Array.from(new Set(jobs.map((j) => j.source))).sort()} filters={filters} onChange={setFilters} />
           <Typography variant="h6" sx={{ mb: 2 }}>
             {filteredJobs.length === jobs.length
               ? `${jobs.length} results`
@@ -346,19 +369,40 @@ export default function SearchPage() {
         </>
       )}
 
+      {scraping && jobs.length === 0 && (
+        <Stack spacing={2} sx={{ mt: 2 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} variant="rectangular" height={180} sx={{ borderRadius: 1 }} />
+          ))}
+        </Stack>
+      )}
+
       <Stack spacing={2}>
-        {filteredJobs.map((job) => (
-          <JobCard
-            key={job.id}
-            job={job}
-            isApplying={applyingId === job.id}
-            isGenerating={streamDlg.open && streamDlg.jobId === job.id}
-            isToggling={togglingId === job.id}
-            onApply={handleApply}
-            onGenerateCoverLetter={handleGenerateCoverLetter}
-            onToggleFavourite={handleToggleFavourite}
-          />
-        ))}
+        {filteredJobs.map((job) => {
+          const isNew = newJobIdsRef.current.has(job.id);
+          const delay = isNew
+            ? Math.min((jobArrivalIndexRef.current.get(job.id) ?? 0) * 55, 900)
+            : 0;
+          return (
+            <Box
+              key={job.id}
+              sx={isNew ? {
+                animation: "jobSlideIn 0.42s ease-out both",
+                animationDelay: `${delay}ms`,
+              } : undefined}
+            >
+              <JobCard
+                job={job}
+                isApplying={applyingId === job.id}
+                isGenerating={streamDlg.open && streamDlg.jobId === job.id}
+                isToggling={togglingId === job.id}
+                onApply={handleApply}
+                onGenerateCoverLetter={handleGenerateCoverLetter}
+                onToggleFavourite={handleToggleFavourite}
+              />
+            </Box>
+          );
+        })}
       </Stack>
 
       <StreamingCoverLetterDialog

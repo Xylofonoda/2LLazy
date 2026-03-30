@@ -1,12 +1,12 @@
 import { prisma } from "@/lib/prisma";
+import { unstable_cache } from "next/cache";
 import { checkOllamaHealth } from "@/lib/ollama";
 import { SiteName } from "@prisma/client";
-import fs from "fs";
-import path from "path";
 import type { SiteCredStatus, UploadedFile, UserProfile } from "@/types";
 
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 const SITES: SiteName[] = ["LINKEDIN"];
+
+const getCachedOllamaHealth = unstable_cache(checkOllamaHealth, ["ollama-health"], { revalidate: 30 });
 
 export async function getSettingsData(): Promise<{
   credentials: SiteCredStatus[];
@@ -15,23 +15,17 @@ export async function getSettingsData(): Promise<{
   ollamaHealth: { ok: boolean; missing: string[] };
   hasOpenAI: boolean;
 }> {
-  const [creds, dbProfile, ollamaHealth] = await Promise.all([
+  const [creds, dbProfile, ollamaHealth, dbFiles] = await Promise.all([
     prisma.siteCredential.findMany(),
     prisma.userProfile.findFirst(),
-    checkOllamaHealth(),
+    getCachedOllamaHealth(),
+    prisma.cvDocument.findMany({ orderBy: { uploadedAt: "desc" }, select: { id: true, originalName: true, size: true, uploadedAt: true } }),
   ]);
 
   const credentials: SiteCredStatus[] = SITES.map((site) => {
     const found = creds.find((c) => c.site === site);
     return { site, configured: !!found, username: found?.username ?? null };
   });
-
-  const uploadedFiles: UploadedFile[] = fs.existsSync(UPLOADS_DIR)
-    ? fs.readdirSync(UPLOADS_DIR).map((filename) => {
-      const stat = fs.statSync(path.join(UPLOADS_DIR, filename));
-      return { filename, size: stat.size, uploadedAt: stat.mtime.toISOString() };
-    })
-    : [];
 
   const profile: UserProfile = {
     name: dbProfile?.name ?? "",
@@ -41,6 +35,13 @@ export async function getSettingsData(): Promise<{
     githubUrl: dbProfile?.githubUrl ?? "",
     coverLetterLanguage: dbProfile?.coverLetterLanguage ?? "English",
   };
+
+  const uploadedFiles: UploadedFile[] = dbFiles.map((f) => ({
+    id: f.id,
+    filename: f.originalName,
+    size: f.size,
+    uploadedAt: f.uploadedAt.toISOString(),
+  }));
 
   return { credentials, profile, uploadedFiles, ollamaHealth, hasOpenAI: Boolean(process.env.OPENAI_API_KEY?.trim()) };
 }

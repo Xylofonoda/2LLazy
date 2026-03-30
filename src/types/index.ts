@@ -35,7 +35,6 @@ export type SourceChipColor =
 
 export const SOURCE_COLOR: Record<string, SourceChipColor> = {
   LINKEDIN: "primary",
-  INDEED: "info",
   STARTUPJOBS: "success",
   JOBSTACK: "warning",
 };
@@ -74,6 +73,7 @@ export interface Application {
     title: string;
     company: string;
     location: string;
+    description: string;
     source: string;
     sourceUrl: string;
     salary: string | null;
@@ -130,6 +130,7 @@ export interface SiteCredStatus {
 }
 
 export interface UploadedFile {
+  id: string;
   filename: string;
   size: number;
   uploadedAt: string;

@@ -40,7 +40,8 @@ export async function injectSession(
     const cookies = JSON.parse(decrypt(cred.cookieJson));
     await context.addCookies(cookies);
     return true;
-  } catch {
+  } catch (err) {
+    console.warn("[sessionManager] Failed to decrypt or inject session cookies:", err);
     return false;
   }
 }

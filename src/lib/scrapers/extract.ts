@@ -57,7 +57,7 @@ export async function extractJobFromText(
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Page URL: ${hint.url}\n\nPage text:\n${pageText.slice(0, 6000)}`,
+        content: `Page URL: ${hint.url}\n\n<page_text>\n${pageText.slice(0, 6000)}\n</page_text>`,
       },
     ]);
 

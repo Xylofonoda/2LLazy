@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Typography } from "@mui/material";
-import { JobFilterBar, type JobFilters, DEFAULT_JOB_FILTERS } from "@/components/jobs/JobFilterBar";
+import { JobFilterBar, type JobFilters } from "@/components/jobs/JobFilterBar";
 import { CoverLetterDialog } from "@/components/dialogs/CoverLetterDialog";
 import { StreamingCoverLetterDialog } from "@/components/dialogs/StreamingCoverLetterDialog";
 import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
@@ -12,17 +12,18 @@ import { FavouritesJobList } from "./FavouritesJobList";
 import type { JobItem } from "@/types";
 
 interface Props {
-  initialJobs: JobItem[];
+  jobs: JobItem[];
+  filters: JobFilters;
+  sources: string[];
 }
 
-export function FavouritesClient({ initialJobs }: Props) {
+export function FavouritesClient({ jobs, filters, sources }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
-  const [filters, setFilters] = useState<JobFilters>(DEFAULT_JOB_FILTERS);
   const [clDialog, setClDialog] = useState<{ open: boolean; content: string; jobTitle: string }>({
     open: false,
     content: "",
@@ -33,6 +34,14 @@ export function FavouritesClient({ initialJobs }: Props) {
     jobId: null,
     jobTitle: "",
   });
+
+  const handleFilterChange = (newFilters: JobFilters) => {
+    const params = new URLSearchParams();
+    if (newFilters.source !== "ALL") params.set("source", newFilters.source);
+    if (newFilters.position) params.set("position", newFilters.position);
+    if (newFilters.hasSalary) params.set("hasSalary", "true");
+    router.replace(`/favourites${params.size > 0 ? `?${params.toString()}` : ""}`);
+  };
 
   const handleToggle = (job: JobItem) => {
     setTogglingId(job.id);
@@ -69,20 +78,6 @@ export function FavouritesClient({ initialJobs }: Props) {
     setStreamDlg({ open: true, jobId: job.id, jobTitle: job.title });
   };
 
-  const filtered = initialJobs.filter((job) => {
-    if (filters.source !== "ALL" && job.source !== filters.source) return false;
-    if (filters.hasSalary && !job.salary) return false;
-    if (filters.position.trim()) {
-      const q = filters.position.toLowerCase();
-      if (
-        !job.title.toLowerCase().includes(q) &&
-        !job.company.toLowerCase().includes(q)
-      )
-        return false;
-    }
-    return true;
-  });
-
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
@@ -97,10 +92,10 @@ export function FavouritesClient({ initialJobs }: Props) {
         onDismiss={(i) => setErrors((prev) => prev.filter((_, j) => j !== i))}
       />
 
-      <JobFilterBar jobs={initialJobs} filters={filters} onChange={setFilters} />
+      <JobFilterBar sources={sources} filters={filters} onChange={handleFilterChange} />
 
       <FavouritesJobList
-        jobs={filtered}
+        jobs={jobs}
         applyingId={applyingId}
         togglingId={togglingId}
         streamingJobId={streamDlg.open ? streamDlg.jobId : null}

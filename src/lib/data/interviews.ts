@@ -44,5 +44,3 @@ export async function getCalendarEntriesForMonth(
   );
 }
 
-/** @deprecated Use getCalendarEntriesForMonth */
-export const getInterviewsForMonth = getCalendarEntriesForMonth;

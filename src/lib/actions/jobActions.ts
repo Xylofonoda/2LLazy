@@ -36,4 +36,5 @@ export async function applyToJob(jobId: string): Promise<void> {
   });
 
   revalidatePath("/dashboard");
+  revalidatePath("/");
 }

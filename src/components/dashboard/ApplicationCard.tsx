@@ -14,7 +14,7 @@ import {
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import EditIcon from "@mui/icons-material/Edit";
 import type { Application, AppStatus } from "@/types";
-import { STATUS_COLOR } from "@/types";
+import { STATUS_COLOR, SOURCE_COLOR } from "@/types";
 
 interface ApplicationCardProps {
   application: Application;
@@ -64,9 +64,31 @@ export function ApplicationCard({
               size="small"
               color={STATUS_COLOR[app.status]}
             />
-            <Chip label={app.job.source} size="small" variant="outlined" />
+            <Chip
+              label={app.job.source}
+              size="small"
+              color={SOURCE_COLOR[app.job.source] ?? "default"}
+              variant="filled"
+            />
           </Stack>
         </Stack>
+
+        {app.job.description && (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{
+              mt: 1,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {app.job.description}
+          </Typography>
+        )}
 
         {app.interview && (
           <Box

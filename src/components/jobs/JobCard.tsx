@@ -66,22 +66,12 @@ export function JobCard({
               {job.company} · {job.location}
             </Typography>
           </Box>
-          <Stack direction="row" spacing={1} alignItems="center">
-            {job.similarity !== undefined && (
-              <Chip
-                label={`${(job.similarity * 100).toFixed(0)}% match`}
-                size="small"
-                color="success"
-                variant="outlined"
-              />
-            )}
-            <Chip
-              label={job.source}
-              size="small"
-              color={SOURCE_COLOR[job.source] ?? "default"}
-              variant="outlined"
-            />
-          </Stack>
+          <Chip
+            label={job.source}
+            size="small"
+            color={SOURCE_COLOR[job.source] ?? "default"}
+            variant="filled"
+          />
         </Stack>
 
         {job.salary && (
@@ -99,6 +89,7 @@ export function JobCard({
             WebkitLineClamp: 3,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
           {job.description || "No description available."}

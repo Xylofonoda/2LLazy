@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
+import { randomUUID } from "crypto";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
@@ -60,8 +61,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Sanitize filename
-  const safeName = path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g, "_");
+  // Sanitize filename and prefix with UUID to prevent overwrite collisions
+  const safeName = `${randomUUID()}-${path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
   const dest = path.join(UPLOADS_DIR, safeName);
 
   fs.writeFileSync(dest, buf);

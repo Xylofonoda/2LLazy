@@ -2,10 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { generateEmbedding, generateCoverLetter } from "@/lib/ollama";
 import { encrypt } from "@/lib/crypto";
 import { checkOllamaHealth } from "@/lib/ollama";
-import { findCvFile, readFileText } from "@/lib/cv";
+import { readCvText } from "@/lib/cv";
 import { cosineSimilarity } from "@/lib/similarity";
 import { applyToJobSite } from "@/lib/apply/applyRouter";
-import { ApplicationStatus, SiteName } from "@prisma/client";
+import { ApplicationStatus, Prisma, SiteName } from "@prisma/client";
 
 export const resolvers = {
   Query: {
@@ -16,7 +16,23 @@ export const resolvers = {
       const text = `${query} ${skillLevel}`.trim();
       const queryEmbedding = await generateEmbedding(text);
 
-      const allJobs = await prisma.jobPosting.findMany({ where: { embedding: { not: [] } } });
+      const allJobs = await prisma.jobPosting.findMany({
+        where: { embedding: { not: Prisma.AnyNull } },
+        take: 500,
+        select: {
+          id: true,
+          title: true,
+          company: true,
+          location: true,
+          sourceUrl: true,
+          source: true,
+          salary: true,
+          postedAt: true,
+          scrapedAt: true,
+          favourited: true,
+          embedding: true,
+        },
+      });
       const jobs = allJobs.filter((j) => j.embedding !== null);
       return jobs
         .map((job) => ({
@@ -165,27 +181,29 @@ export const resolvers = {
         notes?: string;
       }
     ) => {
-      await prisma.application.update({
-        where: { id: applicationId },
-        data: { status: "INTERVIEW" },
-      });
-
-      return prisma.interview.upsert({
-        where: { applicationId },
-        create: {
-          applicationId,
-          scheduledAt: new Date(scheduledAt),
-          durationMinutes,
-          timezone,
-          notes,
-        },
-        update: {
-          scheduledAt: new Date(scheduledAt),
-          durationMinutes,
-          timezone,
-          notes,
-        },
-      });
+      const [, interview] = await prisma.$transaction([
+        prisma.application.update({
+          where: { id: applicationId },
+          data: { status: "INTERVIEW" },
+        }),
+        prisma.interview.upsert({
+          where: { applicationId },
+          create: {
+            applicationId,
+            scheduledAt: new Date(scheduledAt),
+            durationMinutes,
+            timezone,
+            notes,
+          },
+          update: {
+            scheduledAt: new Date(scheduledAt),
+            durationMinutes,
+            timezone,
+            notes,
+          },
+        }),
+      ]);
+      return interview;
     },
 
     updateInterview: async (
@@ -220,10 +238,7 @@ export const resolvers = {
 
       let cvText = "";
       if (useSavedCV) {
-        const cvFile = findCvFile();
-        if (cvFile) {
-          cvText = await readFileText(cvFile).catch(() => "");
-        }
+        cvText = await readCvText().catch(() => "");
       }
 
       const userProfile = await prisma.userProfile.findFirst({

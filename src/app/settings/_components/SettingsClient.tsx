@@ -1,5 +1,3 @@
-"use client";
-
 import { Box, Typography } from "@mui/material";
 import { AiStatusCard } from "./AiStatusCard";
 import { UserProfileCard } from "./UserProfileCard";

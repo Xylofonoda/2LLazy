@@ -107,9 +107,11 @@ export const theme = createTheme({
         root: {
           borderRadius: 6,
           fontWeight: 600,
-          backgroundColor: alpha(brandColors.primary, 0.1),
-          color: brandColors.primary,
-          border: `1px solid ${alpha(brandColors.primary, 0.2)}`,
+          "&.MuiChip-colorDefault": {
+            backgroundColor: alpha(brandColors.primary, 0.1),
+            color: brandColors.primary,
+            border: `1px solid ${alpha(brandColors.primary, 0.2)}`,
+          },
         },
       },
     },

@@ -1,5 +1,3 @@
-"use client";
-
 import { Stack, Typography } from "@mui/material";
 import { ApplicationCard } from "@/components/dashboard/ApplicationCard";
 import type { Application, AppStatus } from "@/types";

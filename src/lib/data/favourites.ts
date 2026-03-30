@@ -1,9 +1,31 @@
 import { prisma } from "@/lib/prisma";
+import { JobSource } from "@prisma/client";
 import type { JobItem } from "@/types";
 
-export async function getFavourites(): Promise<JobItem[]> {
+const VALID_SOURCES = new Set(Object.values(JobSource));
+
+export interface FavouriteFilters {
+  source?: string;
+  position?: string;
+  hasSalary?: boolean;
+}
+
+export async function getFavourites(filters?: FavouriteFilters): Promise<JobItem[]> {
+  const { source, position, hasSalary } = filters ?? {};
   const jobs = await prisma.jobPosting.findMany({
-    where: { favourited: true },
+    where: {
+      favourited: true,
+      ...(source && source !== "ALL" && VALID_SOURCES.has(source as JobSource) ? { source: source as JobSource } : {}),
+      ...(hasSalary ? { salary: { not: null } } : {}),
+      ...(position?.trim()
+        ? {
+          OR: [
+            { title: { contains: position.trim(), mode: "insensitive" } },
+            { company: { contains: position.trim(), mode: "insensitive" } },
+          ],
+        }
+        : {}),
+    },
     orderBy: { scrapedAt: "desc" },
     include: {
       coverLetters: {
@@ -26,4 +48,14 @@ export async function getFavourites(): Promise<JobItem[]> {
     favourited: job.favourited,
     coverLetter: job.coverLetters[0] ?? null,
   }));
+}
+
+export async function getFavouriteSources(): Promise<string[]> {
+  const rows = await prisma.jobPosting.findMany({
+    where: { favourited: true },
+    distinct: ["source"],
+    select: { source: true },
+    orderBy: { source: "asc" },
+  });
+  return rows.map((r) => r.source as string);
 }

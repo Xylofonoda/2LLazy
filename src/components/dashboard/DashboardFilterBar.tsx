@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   Box,
   Chip,
@@ -12,7 +13,7 @@ import {
   Switch,
   TextField,
 } from "@mui/material";
-import type { Application, AppStatus } from "@/types";
+import type { AppStatus } from "@/types";
 import { ALL_STATUSES, STATUS_COLOR } from "@/types";
 
 export interface DashboardFilters {
@@ -23,13 +24,15 @@ export interface DashboardFilters {
 }
 
 interface DashboardFilterBarProps {
-  applications: Application[];
+  sources: string[];
+  statusCounts: Record<string, number>;
   filters: DashboardFilters;
   onChange: (filters: DashboardFilters) => void;
 }
 
 export function DashboardFilterBar({
-  applications,
+  sources,
+  statusCounts,
   filters,
   onChange,
 }: DashboardFilterBarProps) {
@@ -38,19 +41,20 @@ export function DashboardFilterBar({
     value: DashboardFilters[K],
   ) => onChange({ ...filters, [key]: value });
 
-  const statusCounts = ALL_STATUSES.reduce<Record<string, number>>((acc, s) => {
-    acc[s] = applications.filter((a) => a.status === s).length;
-    return acc;
-  }, {});
+  const [positionInput, setPositionInput] = useState(filters.position);
+  useEffect(() => setPositionInput(filters.position), [filters.position]);
 
-  const sources = ["ALL", ...Array.from(new Set(applications.map((a) => a.job.source))).sort()];
+  const commitPosition = () => set("position", positionInput);
+
+  const totalCount = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+  const allSources = ["ALL", ...sources];
 
   return (
     <Box sx={{ mb: 3 }}>
       {/* ── Status chips ── */}
       <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap", gap: 1 }}>
         <Chip
-          label={`ALL: ${applications.length}`}
+          label={`ALL: ${totalCount}`}
           variant={filters.status === "ALL" ? "filled" : "outlined"}
           onClick={() => set("status", "ALL")}
         />
@@ -75,8 +79,10 @@ export function DashboardFilterBar({
         <TextField
           label="Position / Company"
           size="small"
-          value={filters.position}
-          onChange={(e) => set("position", e.target.value)}
+          value={positionInput}
+          onChange={(e) => setPositionInput(e.target.value)}
+          onBlur={commitPosition}
+          onKeyDown={(e) => e.key === "Enter" && commitPosition()}
           sx={{ minWidth: 200 }}
           placeholder="Search title or company…"
         />
@@ -90,7 +96,7 @@ export function DashboardFilterBar({
             label="Site"
             onChange={(e) => set("source", e.target.value)}
           >
-            {sources.map((src) => (
+            {allSources.map((src) => (
               <MenuItem key={src} value={src}>
                 {src === "ALL" ? "All Sites" : src}
               </MenuItem>

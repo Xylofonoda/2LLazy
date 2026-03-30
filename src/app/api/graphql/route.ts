@@ -48,9 +48,17 @@ async function handleRequest(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
   } else if (req.method === "GET" && queryParam) {
+    let parsedVariables: Record<string, unknown> | undefined;
+    if (variablesParam) {
+      try {
+        parsedVariables = JSON.parse(variablesParam);
+      } catch {
+        return NextResponse.json({ error: "Invalid variables JSON" }, { status: 400 });
+      }
+    }
     graphqlRequest = {
       query: queryParam,
-      variables: variablesParam ? JSON.parse(variablesParam) : undefined,
+      variables: parsedVariables,
       operationName: operationNameParam ?? undefined,
     };
   } else {

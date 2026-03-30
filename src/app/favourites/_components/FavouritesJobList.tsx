@@ -1,5 +1,3 @@
-"use client";
-
 import { Stack, Typography } from "@mui/material";
 import { JobCard } from "@/components/jobs/JobCard";
 import type { JobItem } from "@/types";

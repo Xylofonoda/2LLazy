@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, Alert } from "@mui/material";
 import { DashboardFilterBar, type DashboardFilters } from "@/components/dashboard/DashboardFilterBar";
 import { CoverLetterDialog } from "@/components/dialogs/CoverLetterDialog";
 import { StatusChangeDialog } from "@/components/dialogs/StatusChangeDialog";
@@ -11,21 +11,16 @@ import { ApplicationList } from "./ApplicationList";
 import type { Application, AppStatus } from "@/types";
 
 interface Props {
-  initialApplications: Application[];
+  applications: Application[];
+  filters: DashboardFilters;
+  sources: string[];
+  statusCounts: Record<string, number>;
 }
 
-const DEFAULT_FILTERS: DashboardFilters = {
-  status: "ALL",
-  source: "ALL",
-  position: "",
-  hasSalary: false,
-};
-
-export function DashboardClient({ initialApplications }: Props) {
+export function DashboardClient({ applications, filters, sources, statusCounts }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [filters, setFilters] = useState<DashboardFilters>(DEFAULT_FILTERS);
   const [clDialog, setClDialog] = useState<{ open: boolean; content: string }>({
     open: false,
     content: "",
@@ -35,26 +30,26 @@ export function DashboardClient({ initialApplications }: Props) {
     id: string;
     status: AppStatus;
   } | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const filtered = initialApplications.filter((a) => {
-    if (filters.status !== "ALL" && a.status !== filters.status) return false;
-    if (filters.source !== "ALL" && a.job.source !== filters.source) return false;
-    if (filters.hasSalary && !a.job.salary) return false;
-    if (filters.position.trim()) {
-      const q = filters.position.toLowerCase();
-      const matches =
-        a.job.title.toLowerCase().includes(q) ||
-        a.job.company.toLowerCase().includes(q);
-      if (!matches) return false;
-    }
-    return true;
-  });
+  const handleFilterChange = (newFilters: DashboardFilters) => {
+    const params = new URLSearchParams();
+    if (newFilters.status !== "ALL") params.set("status", newFilters.status);
+    if (newFilters.source !== "ALL") params.set("source", newFilters.source);
+    if (newFilters.position) params.set("position", newFilters.position);
+    if (newFilters.hasSalary) params.set("hasSalary", "true");
+    router.replace(`/dashboard${params.size > 0 ? `?${params.toString()}` : ""}`);
+  };
 
   const handleStatusChange = (id: string, status: AppStatus) => {
     startTransition(async () => {
-      await updateApplicationStatus(id, status);
-      router.refresh();
-      setStatusDialog(null);
+      try {
+        await updateApplicationStatus(id, status);
+        router.refresh();
+        setStatusDialog(null);
+      } catch (err) {
+        setErrorMsg(`Failed to update status: ${String(err)}`);
+      }
     });
   };
 
@@ -64,14 +59,21 @@ export function DashboardClient({ initialApplications }: Props) {
         Application Dashboard
       </Typography>
 
+      {errorMsg && (
+        <Alert severity="error" onClose={() => setErrorMsg(null)} sx={{ mb: 2 }}>
+          {errorMsg}
+        </Alert>
+      )}
+
       <DashboardFilterBar
-        applications={initialApplications}
+        sources={sources}
+        statusCounts={statusCounts}
         filters={filters}
-        onChange={setFilters}
+        onChange={handleFilterChange}
       />
 
       <ApplicationList
-        applications={filtered}
+        applications={applications}
         isPending={isPending}
         onStatusClick={(id, status) => setStatusDialog({ open: true, id, status })}
         onViewCoverLetter={(content) => setClDialog({ open: true, content })}

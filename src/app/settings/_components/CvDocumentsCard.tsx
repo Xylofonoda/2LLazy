@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useTransition, useState } from "react";
 import {
   Typography,
   Card,
@@ -11,43 +10,31 @@ import {
   Alert,
   Chip,
   CircularProgress,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import DeleteIcon from "@mui/icons-material/Delete";
 import type { UploadedFile } from "@/types";
+import { uploadCvAction, deleteUploadedFileAction } from "@/lib/actions/settingsActions";
 
 interface Props {
   uploadedFiles: UploadedFile[];
 }
 
 export function CvDocumentsCard({ uploadedFiles }: Props) {
-  const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [state, formAction, isPending] = useActionState(uploadCvAction, null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletingFile, setDeletingFile] = useState<string | null>(null);
+  const [, startDeleteTransition] = useTransition();
 
-  const showMessage = (type: "success" | "error", text: string) => {
-    setMessage({ type, text });
-    setTimeout(() => setMessage(null), 5000);
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/uploads", { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      showMessage("success", `Uploaded: ${data.filename}`);
-      router.refresh();
-    } catch (err) {
-      showMessage("error", String(err));
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+  const handleDelete = (id: string) => {
+    setDeletingFile(id);
+    startDeleteTransition(async () => {
+      const result = await deleteUploadedFileAction(id);
+      if (result.error) setDeleteError(result.error);
+      setDeletingFile(null);
+    });
   };
 
   return (
@@ -62,36 +49,71 @@ export function CvDocumentsCard({ uploadedFiles }: Props) {
           and form file uploads.
         </Typography>
 
-        {message && (
-          <Alert severity={message.type} sx={{ mb: 2 }}>
-            {message.text}
+        {state?.error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {state.error}
+          </Alert>
+        )}
+        {deleteError && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDeleteError(null)}>
+            {deleteError}
+          </Alert>
+        )}
+        {state?.filename && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Uploaded: {state.filename}
           </Alert>
         )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.docx,.doc,.txt"
-          onChange={handleFileUpload}
-          style={{ display: "none" }}
-        />
-        <Button
-          variant="outlined"
-          startIcon={uploading ? <CircularProgress size={16} /> : <UploadFileIcon />}
-          disabled={uploading}
-          onClick={() => fileInputRef.current?.click()}
-          sx={{ mb: 2 }}
-        >
-          {uploading ? "Uploading..." : "Upload File"}
-        </Button>
+        <form action={formAction}>
+          <input
+            id="cv-upload-input"
+            type="file"
+            name="file"
+            accept=".pdf,.docx,.doc,.txt"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files?.[0]) {
+                e.target.form?.requestSubmit();
+              }
+            }}
+          />
+          <Button
+            component="label"
+            htmlFor="cv-upload-input"
+            variant="outlined"
+            startIcon={isPending ? <CircularProgress size={16} /> : <UploadFileIcon />}
+            disabled={isPending}
+            sx={{ mb: 2 }}
+          >
+            {isPending ? "Uploading..." : "Upload File"}
+          </Button>
+        </form>
 
         <Stack spacing={1}>
           {uploadedFiles.map((f) => (
-            <Stack key={f.filename} direction="row" alignItems="center" spacing={1}>
+            <Stack key={f.id} direction="row" alignItems="center" spacing={1}>
               <Chip label={f.filename} size="small" variant="outlined" />
               <Typography variant="caption" color="text.secondary">
                 {(f.size / 1024).toFixed(1)} KB
               </Typography>
+              <Tooltip title="Delete file">
+                <span>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    disabled={deletingFile === f.id}
+                    onClick={() => handleDelete(f.id)}
+                    aria-label={`Delete ${f.filename}`}
+                  >
+                    {deletingFile === f.id ? (
+                      <CircularProgress size={14} color="error" />
+                    ) : (
+                      <DeleteIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </span>
+              </Tooltip>
             </Stack>
           ))}
           {uploadedFiles.length === 0 && (

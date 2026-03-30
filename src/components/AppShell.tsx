@@ -9,6 +9,8 @@ import {
   ListItemText,
   Typography,
   Divider,
+  Tooltip,
+  IconButton,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import DashboardIcon from "@mui/icons-material/Dashboard";
@@ -16,8 +18,10 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import SettingsIcon from "@mui/icons-material/Settings";
 import FlashOnIcon from "@mui/icons-material/FlashOn";
 import BookmarkIcon from "@mui/icons-material/Bookmark";
+import LogoutIcon from "@mui/icons-material/Logout";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { logoutAction } from "@/lib/actions/authActions";
 
 const DRAWER_WIDTH = 220;
 
@@ -49,9 +53,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <Box sx={{ p: 2.5, display: "flex", alignItems: "center", gap: 1 }}>
           <FlashOnIcon sx={{ color: "primary.main" }} />
-          <Typography variant="h6" sx={{ color: "primary.main", fontSize: 16 }}>
+          <Typography variant="h6" sx={{ color: "primary.main", fontSize: 16, flexGrow: 1 }}>
             AppFatigue
           </Typography>
+          <Tooltip title="Logout">
+            <IconButton size="small" onClick={() => logoutAction()} sx={{ color: "text.secondary" }}>
+              <LogoutIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
         <Divider />
         <List sx={{ pt: 1 }}>
