@@ -15,6 +15,7 @@ import {
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import EditIcon from "@mui/icons-material/Edit";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import type { Application, AppStatus } from "@/types";
 import { STATUS_COLOR, SOURCE_COLOR } from "@/types";
 import { AutoApplyDialog } from "@/components/dialogs/AutoApplyDialog";
@@ -23,6 +24,7 @@ interface ApplicationCardProps {
   application: Application;
   onStatusClick: (id: string, status: AppStatus) => void;
   onViewCoverLetter: (content: string, coverId: string) => void;
+  onGenerateCoverLetter: (jobId: string, jobTitle: string) => void;
 }
 
 /** Single application row card for the Dashboard page. */
@@ -30,6 +32,7 @@ export function ApplicationCard({
   application: app,
   onStatusClick,
   onViewCoverLetter,
+  onGenerateCoverLetter,
 }: ApplicationCardProps) {
   const [autoApplyOpen, setAutoApplyOpen] = useState(false);
 
@@ -149,6 +152,17 @@ export function ApplicationCard({
               onClick={() => onViewCoverLetter(app.coverLetter!.content, app.coverLetter!.id)}
             >
               View Cover Letter
+            </Button>
+          )}
+
+          {!app.coverLetter && (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AutoAwesomeIcon />}
+              onClick={() => onGenerateCoverLetter(app.job.id, app.job.title)}
+            >
+              Gen Cover Letter
             </Button>
           )}
 

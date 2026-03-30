@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Box, Typography, Alert } from "@mui/material";
 import { DashboardFilterBar, type DashboardFilters } from "@/components/dashboard/DashboardFilterBar";
 import { CoverLetterDialog } from "@/components/dialogs/CoverLetterDialog";
+import { StreamingCoverLetterDialog } from "@/components/dialogs/StreamingCoverLetterDialog";
 import { StatusChangeDialog } from "@/components/dialogs/StatusChangeDialog";
 import { updateApplicationStatus } from "@/lib/actions/applicationActions";
 import { ApplicationList } from "./ApplicationList";
@@ -25,6 +26,11 @@ export function DashboardClient({ applications, filters, sources, statusCounts }
     open: false,
     content: "",
     coverId: null,
+  });
+  const [streamDlg, setStreamDlg] = useState<{ open: boolean; jobId: string | null; jobTitle: string }>({
+    open: false,
+    jobId: null,
+    jobTitle: "",
   });
   const [statusDialog, setStatusDialog] = useState<{
     open: boolean;
@@ -78,6 +84,7 @@ export function DashboardClient({ applications, filters, sources, statusCounts }
         isPending={isPending}
         onStatusClick={(id, status) => setStatusDialog({ open: true, id, status })}
         onViewCoverLetter={(content, coverId) => setClDialog({ open: true, content, coverId })}
+        onGenerateCoverLetter={(jobId, jobTitle) => setStreamDlg({ open: true, jobId, jobTitle })}
       />
 
       <CoverLetterDialog
@@ -96,6 +103,17 @@ export function DashboardClient({ applications, filters, sources, statusCounts }
           setClDialog({ open: false, content: "", coverId: null });
           router.refresh();
         } : undefined}
+      />
+
+      <StreamingCoverLetterDialog
+        open={streamDlg.open}
+        jobId={streamDlg.jobId}
+        jobTitle={streamDlg.jobTitle}
+        onClose={() => setStreamDlg({ open: false, jobId: null, jobTitle: "" })}
+        onComplete={() => {
+          setStreamDlg((prev) => ({ ...prev, open: false }));
+          router.refresh();
+        }}
       />
 
       {statusDialog && (

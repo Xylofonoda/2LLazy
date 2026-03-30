@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Box, Typography } from "@mui/material";
 import { JobFilterBar, type JobFilters } from "@/components/jobs/JobFilterBar";
 import { CoverLetterDialog } from "@/components/dialogs/CoverLetterDialog";
-import { StreamingCoverLetterDialog } from "@/components/dialogs/StreamingCoverLetterDialog";
 import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
 import { toggleFavourite, applyToJob } from "@/lib/actions/jobActions";
 import { FavouritesJobList } from "./FavouritesJobList";
@@ -31,12 +30,6 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
     jobTitle: "",
     coverId: null,
   });
-  const [streamDlg, setStreamDlg] = useState<{ open: boolean; jobId: string | null; jobTitle: string }>({
-    open: false,
-    jobId: null,
-    jobTitle: "",
-  });
-
   const handleFilterChange = (newFilters: JobFilters) => {
     const params = new URLSearchParams();
     if (newFilters.source !== "ALL") params.set("source", newFilters.source);
@@ -76,17 +69,13 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
     });
   };
 
-  const handleGenerateCoverLetter = (job: JobItem) => {
-    setStreamDlg({ open: true, jobId: job.id, jobTitle: job.title });
-  };
-
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
         Favourites
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Jobs you&apos;ve saved. Apply or generate a cover letter when you&apos;re ready.
+        Jobs you&apos;ve saved. Send them to the dashboard to auto-apply.
       </Typography>
 
       <ErrorAlertList
@@ -104,10 +93,8 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
         )}
         applyingId={applyingId}
         togglingId={togglingId}
-        streamingJobId={streamDlg.open ? streamDlg.jobId : null}
         onApply={handleApply}
         onToggleFavourite={handleToggle}
-        onGenerateCoverLetter={handleGenerateCoverLetter}
         onViewCoverLetter={(coverLetter, jobTitle) =>
           setClDialog({ open: true, content: coverLetter.content, jobTitle, coverId: coverLetter.id })
         }
@@ -135,16 +122,6 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
         } : undefined}
       />
 
-      <StreamingCoverLetterDialog
-        open={streamDlg.open}
-        jobId={streamDlg.jobId}
-        jobTitle={streamDlg.jobTitle}
-        onClose={() => setStreamDlg({ open: false, jobId: null, jobTitle: "" })}
-        onComplete={() => {
-          setStreamDlg((prev) => ({ ...prev, open: false }));
-          router.refresh();
-        }}
-      />
     </Box>
   );
 }

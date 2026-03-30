@@ -23,7 +23,6 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import { JobCard } from "@/components/jobs/JobCard";
 import { JobFilterBar, type JobFilters, DEFAULT_JOB_FILTERS } from "@/components/jobs/JobFilterBar";
-import { StreamingCoverLetterDialog } from "@/components/dialogs/StreamingCoverLetterDialog";
 import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
 import type { JobItem } from "@/types";
 
@@ -46,15 +45,9 @@ export default function SearchPage() {
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
   const [scraping, setScraping] = useState(false);
-  const [applyingId, setApplyingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [filters, setFilters] = useState<JobFilters>(DEFAULT_JOB_FILTERS);
-  const [streamDlg, setStreamDlg] = useState<{ open: boolean; jobId: string | null; jobTitle: string }>({
-    open: false,
-    jobId: null,
-    jobTitle: "",
-  });
   const abortRef = useRef<AbortController | null>(null);
   // Track which job IDs arrived via the live SSE stream (not restored from sessionStorage)
   const newJobIdsRef = useRef<Set<string>>(new Set());
@@ -237,39 +230,6 @@ export default function SearchPage() {
     }
   };
 
-  const handleApply = async (job: JobResult) => {
-    setApplyingId(job.id);
-    try {
-      const res = await fetch("/api/graphql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: `mutation Apply($jobId: ID!) { applyToJob(jobId: $jobId) { id status } }`,
-          variables: { jobId: job.id },
-        }),
-      });
-      const data = await res.json();
-      if (data.errors) throw new Error(data.errors[0].message);
-    } catch (err) {
-      setErrors((prev) => [
-        ...prev,
-        `Apply failed for ${job.title}: ${String(err)}`,
-      ]);
-    } finally {
-      setApplyingId(null);
-    }
-  };
-
-  const handleGenerateCoverLetter = (job: JobResult) => {
-    setStreamDlg({ open: true, jobId: job.id, jobTitle: job.title });
-  };
-
-  const handleStreamComplete = (jobId: string) => {
-    setStreamDlg({ open: false, jobId: null, jobTitle: "" });
-    setJobs((prev) =>
-      prev.map((j) => (j.id === jobId ? { ...j, favourited: true } : j)),
-    );
-  };
 
   const filteredJobs = jobs
     .filter((job) => {
@@ -420,11 +380,7 @@ export default function SearchPage() {
             >
               <JobCard
                 job={job}
-                isApplying={applyingId === job.id}
-                isGenerating={streamDlg.open && streamDlg.jobId === job.id}
                 isToggling={togglingId === job.id}
-                onApply={handleApply}
-                onGenerateCoverLetter={handleGenerateCoverLetter}
                 onToggleFavourite={handleToggleFavourite}
               />
             </Box>
@@ -432,13 +388,7 @@ export default function SearchPage() {
         })}
       </Stack>
 
-      <StreamingCoverLetterDialog
-        open={streamDlg.open}
-        jobId={streamDlg.jobId}
-        jobTitle={streamDlg.jobTitle}
-        onClose={() => setStreamDlg({ open: false, jobId: null, jobTitle: "" })}
-        onComplete={() => handleStreamComplete(streamDlg.jobId ?? "")}
-      />
+
     </Box>
   );
 }

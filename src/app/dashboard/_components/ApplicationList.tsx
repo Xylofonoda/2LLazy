@@ -7,6 +7,7 @@ interface Props {
   isPending: boolean;
   onStatusClick: (id: string, status: AppStatus) => void;
   onViewCoverLetter: (content: string, coverId: string) => void;
+  onGenerateCoverLetter: (jobId: string, jobTitle: string) => void;
 }
 
 export function ApplicationList({
@@ -14,6 +15,7 @@ export function ApplicationList({
   isPending,
   onStatusClick,
   onViewCoverLetter,
+  onGenerateCoverLetter,
 }: Props) {
   return (
     <>
@@ -29,6 +31,7 @@ export function ApplicationList({
             application={app}
             onStatusClick={onStatusClick}
             onViewCoverLetter={onViewCoverLetter}
+            onGenerateCoverLetter={onGenerateCoverLetter}
           />
         ))}
         {applications.length === 0 && (

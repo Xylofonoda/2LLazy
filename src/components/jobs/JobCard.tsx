@@ -15,7 +15,6 @@ import {
   CircularProgress,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import BookmarkIcon from "@mui/icons-material/Bookmark";
 import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
@@ -24,11 +23,11 @@ import { SOURCE_COLOR } from "@/types";
 
 interface JobCardProps {
   job: JobItem;
+  /** "search" (default) shows an Interested/Saved CTA. "favourites" shows Send to Dashboard. */
+  variant?: "search" | "favourites";
   isApplying?: boolean;
-  isGenerating?: boolean;
   isToggling?: boolean;
-  onApply: (job: JobItem) => void;
-  onGenerateCoverLetter: (job: JobItem) => void;
+  onApply?: (job: JobItem) => void;
   onToggleFavourite: (job: JobItem) => void;
   onViewCoverLetter?: (coverLetter: { id: string; content: string }) => void;
 }
@@ -42,11 +41,10 @@ interface JobCardProps {
  */
 export function JobCard({
   job,
+  variant = "search",
   isApplying,
-  isGenerating,
   isToggling,
   onApply,
-  onGenerateCoverLetter,
   onToggleFavourite,
   onViewCoverLetter,
 }: JobCardProps) {
@@ -104,60 +102,66 @@ export function JobCard({
       <Divider />
 
       <CardActions sx={{ px: 2, py: 1 }}>
-        <Button
-          size="small"
-          variant="contained"
-          startIcon={<SendIcon />}
-          onClick={() => onApply(job)}
-          disabled={isApplying}
-        >
-          {isApplying ? "Applying..." : "Auto-Apply"}
-        </Button>
-
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<AutoAwesomeIcon />}
-          onClick={() => onGenerateCoverLetter(job)}
-          disabled={isGenerating}
-        >
-          {isGenerating ? "Generating..." : "Gen Cover Letter"}
-        </Button>
-
-        {job.coverLetter && onViewCoverLetter && (
+        {variant === "search" ? (
           <Button
             size="small"
-            variant="outlined"
-            color="secondary"
-            onClick={() => onViewCoverLetter(job.coverLetter!)}
-          >
-            Cover Letter
-          </Button>
-        )}
-
-        <Tooltip
-          title={job.favourited ? "Remove from favourites" : "Save to favourites"}
-        >
-          <IconButton
-            size="small"
+            variant={job.favourited ? "contained" : "outlined"}
+            color={job.favourited ? "success" : "primary"}
+            startIcon={
+              isToggling ? (
+                <CircularProgress size={14} />
+              ) : job.favourited ? (
+                <BookmarkIcon />
+              ) : (
+                <BookmarkBorderIcon />
+              )
+            }
             onClick={() => onToggleFavourite(job)}
             disabled={isToggling}
-            sx={{
-              ml: "auto",
-              color: job.favourited ? "warning.main" : "text.secondary",
-            }}
           >
-            {isToggling ? (
-              <CircularProgress size={16} />
-            ) : job.favourited ? (
-              <BookmarkIcon fontSize="small" />
-            ) : (
-              <BookmarkBorderIcon fontSize="small" />
-            )}
-          </IconButton>
-        </Tooltip>
+            {job.favourited ? "Saved" : "Interested"}
+          </Button>
+        ) : (
+          <>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<SendIcon />}
+              onClick={() => onApply?.(job)}
+              disabled={isApplying}
+            >
+              {isApplying ? "Sending..." : "Send to Dashboard"}
+            </Button>
 
-        <Tooltip title="Open job posting">
+            {job.coverLetter && onViewCoverLetter && (
+              <Button
+                size="small"
+                variant="outlined"
+                color="secondary"
+                onClick={() => onViewCoverLetter(job.coverLetter!)}
+              >
+                Cover Letter
+              </Button>
+            )}
+
+            <Tooltip title="Remove from favourites">
+              <IconButton
+                size="small"
+                onClick={() => onToggleFavourite(job)}
+                disabled={isToggling}
+                sx={{ ml: "auto", color: "warning.main" }}
+              >
+                {isToggling ? (
+                  <CircularProgress size={16} />
+                ) : (
+                  <BookmarkIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
+          </>
+        )}
+
+        <Tooltip title="Open job posting" sx={variant === "search" ? { ml: "auto" } : undefined}>
           <IconButton
             size="small"
             component="a"
