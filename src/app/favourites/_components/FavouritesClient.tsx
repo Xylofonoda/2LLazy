@@ -24,10 +24,12 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
-  const [clDialog, setClDialog] = useState<{ open: boolean; content: string; jobTitle: string }>({
+  const [deletedCoverLetterIds, setDeletedCoverLetterIds] = useState<Set<string>>(new Set());
+  const [clDialog, setClDialog] = useState<{ open: boolean; content: string; jobTitle: string; coverId: string | null }>({
     open: false,
     content: "",
     jobTitle: "",
+    coverId: null,
   });
   const [streamDlg, setStreamDlg] = useState<{ open: boolean; jobId: string | null; jobTitle: string }>({
     open: false,
@@ -95,23 +97,42 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
       <JobFilterBar sources={sources} filters={filters} onChange={handleFilterChange} />
 
       <FavouritesJobList
-        jobs={jobs}
+        jobs={jobs.map((j) =>
+          j.coverLetter && deletedCoverLetterIds.has(j.coverLetter.id)
+            ? { ...j, coverLetter: null }
+            : j
+        )}
         applyingId={applyingId}
         togglingId={togglingId}
         streamingJobId={streamDlg.open ? streamDlg.jobId : null}
         onApply={handleApply}
         onToggleFavourite={handleToggle}
         onGenerateCoverLetter={handleGenerateCoverLetter}
-        onViewCoverLetter={(content, jobTitle) =>
-          setClDialog({ open: true, content, jobTitle })
+        onViewCoverLetter={(coverLetter, jobTitle) =>
+          setClDialog({ open: true, content: coverLetter.content, jobTitle, coverId: coverLetter.id })
         }
       />
 
       <CoverLetterDialog
         open={clDialog.open}
         content={clDialog.content}
-        filename={`cover-letter-${clDialog.jobTitle.toLowerCase().replace(/\s+/g, "-")}.txt`}
-        onClose={() => setClDialog({ open: false, content: "", jobTitle: "" })}
+        filenameStem={`cover-letter-${clDialog.jobTitle.toLowerCase().replace(/\s+/g, "-")}`}
+        onClose={() => setClDialog({ open: false, content: "", jobTitle: "", coverId: null })}
+        onDelete={clDialog.coverId ? async () => {
+          const idToDelete = clDialog.coverId!;
+          // Immediately remove from UI before waiting for server
+          setDeletedCoverLetterIds((prev) => new Set(prev).add(idToDelete));
+          setClDialog({ open: false, content: "", jobTitle: "", coverId: null });
+          await fetch("/api/graphql", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: `mutation Del($id: ID!) { deleteCoverLetter(id: $id) }`,
+              variables: { id: idToDelete },
+            }),
+          });
+          router.refresh();
+        } : undefined}
       />
 
       <StreamingCoverLetterDialog

@@ -29,6 +29,34 @@ export async function getBrowser(): Promise<Browser> {
 }
 
 /**
+ * Returns a visible (headless=false) browser for manual takeover scenarios.
+ * This is a separate instance from the headless scraping singleton.
+ * Only useful when the application is running locally.
+ */
+let visibleBrowserInstance: Browser | null = null;
+
+export async function getVisibleBrowser(): Promise<Browser> {
+  if (visibleBrowserInstance && visibleBrowserInstance.isConnected()) {
+    return visibleBrowserInstance;
+  }
+
+  visibleBrowserInstance = await chromium.launch({
+    headless: false,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-blink-features=AutomationControlled",
+    ],
+  });
+
+  visibleBrowserInstance.on("disconnected", () => {
+    visibleBrowserInstance = null;
+  });
+
+  return visibleBrowserInstance;
+}
+
+/**
  * Close the browser (call on graceful shutdown if needed).
  */
 export async function closeBrowser(): Promise<void> {

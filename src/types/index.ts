@@ -54,6 +54,8 @@ export interface JobItem {
   favourited?: boolean;
   /** Latest generated cover letter for this job, if any. */
   coverLetter?: { id: string; content: string } | null;
+  /** True if the job was first seen in the DB within the last 24 hours. */
+  isNew?: boolean;
 }
 
 export interface ApplicationInterview {

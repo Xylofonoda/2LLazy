@@ -8,6 +8,9 @@ const CHAT_MODEL = process.env.OLLAMA_CHAT_MODEL ?? "llama3";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
 const hasOpenAI = Boolean(OPENAI_API_KEY);
 
+// Warm up the embedding model so the first real search doesn't pay the VRAM load penalty
+generateEmbedding("warmup").catch(() => { });
+
 /**
  * Generate a text embedding vector using the local Ollama embed model.
  * Returns a number[] (768 dimensions for nomic-embed-text).

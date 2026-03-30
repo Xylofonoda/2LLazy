@@ -12,6 +12,7 @@ import {
   Typography,
 } from "@mui/material";
 import DownloadIcon from "@mui/icons-material/Download";
+import { downloadAsDocx } from "@/lib/downloadDocx";
 
 interface Props {
   open: boolean;
@@ -119,15 +120,8 @@ export function StreamingCoverLetterDialog({
     onClose();
   };
 
-  const handleDownload = () => {
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `cover-letter-${jobTitle.toLowerCase().replace(/\s+/g, "-")}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const handleDownload = () =>
+    downloadAsDocx(content, `cover-letter-${jobTitle.toLowerCase().replace(/\s+/g, "-")}`);
 
   return (
     <Dialog
@@ -171,7 +165,7 @@ export function StreamingCoverLetterDialog({
       <DialogActions>
         {!isStreaming && content && (
           <Button startIcon={<DownloadIcon />} onClick={handleDownload}>
-            Download .txt
+            Download .docx
           </Button>
         )}
         <Button onClick={handleClose} disabled={isStreaming}>

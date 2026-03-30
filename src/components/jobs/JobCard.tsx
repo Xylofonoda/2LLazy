@@ -30,7 +30,7 @@ interface JobCardProps {
   onApply: (job: JobItem) => void;
   onGenerateCoverLetter: (job: JobItem) => void;
   onToggleFavourite: (job: JobItem) => void;
-  onViewCoverLetter?: (content: string) => void;
+  onViewCoverLetter?: (coverLetter: { id: string; content: string }) => void;
 }
 
 /**
@@ -66,12 +66,17 @@ export function JobCard({
               {job.company} · {job.location}
             </Typography>
           </Box>
-          <Chip
-            label={job.source}
-            size="small"
-            color={SOURCE_COLOR[job.source] ?? "default"}
-            variant="filled"
-          />
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            {job.isNew && (
+              <Chip label="NEW" size="small" color="success" variant="outlined" />
+            )}
+            <Chip
+              label={job.source}
+              size="small"
+              color={SOURCE_COLOR[job.source] ?? "default"}
+              variant="filled"
+            />
+          </Stack>
         </Stack>
 
         {job.salary && (
@@ -124,7 +129,7 @@ export function JobCard({
             size="small"
             variant="outlined"
             color="secondary"
-            onClick={() => onViewCoverLetter(job.coverLetter!.content)}
+            onClick={() => onViewCoverLetter(job.coverLetter!)}
           >
             Cover Letter
           </Button>

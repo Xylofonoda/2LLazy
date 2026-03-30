@@ -16,6 +16,9 @@ import {
   Stack,
   Skeleton,
   GlobalStyles,
+  Switch,
+  FormControlLabel,
+  Tooltip,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { JobCard } from "@/components/jobs/JobCard";
@@ -39,6 +42,7 @@ const SKILL_LEVELS = ["Junior", "Mid", "Senior", "Lead", "Any"];
 export default function SearchPage() {
   const queryInputRef = useRef<HTMLInputElement>(null);
   const [skillLevel, setSkillLevel] = useState("Any");
+  const [deepSearch, setDeepSearch] = useState(false);
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
   const [scraping, setScraping] = useState(false);
@@ -67,12 +71,14 @@ export default function SearchPage() {
           jobs?: JobResult[];
           query?: string;
           skillLevel?: string;
+          deepSearch?: boolean;
           progress?: string;
           errors?: string[];
         };
         if (p.jobs?.length) setJobs(p.jobs.map((j) => ({ ...j, description: j.description ? j.description + "…" : "" })));
         if (p.query && queryInputRef.current) queryInputRef.current.value = p.query;
         if (p.skillLevel) setSkillLevel(p.skillLevel);
+        if (p.deepSearch !== undefined) setDeepSearch(p.deepSearch);
         // Only restore a terminal progress message, not a mid-scrape one
         if (p.progress && !p.progress.startsWith("Scraping") && !p.progress.startsWith("Starting")) {
           setProgress(p.progress);
@@ -103,7 +109,7 @@ export default function SearchPage() {
       const parsed = existing ? JSON.parse(existing) : {};
       sessionStorage.setItem(
         "job_search_session",
-        JSON.stringify({ ...parsed, skillLevel, progress, errors }),
+        JSON.stringify({ ...parsed, skillLevel, deepSearch, progress, errors }),
       );
     } catch { /* storage quota exceeded */ }
   }, [skillLevel, progress, errors, scraping]);
@@ -132,7 +138,7 @@ export default function SearchPage() {
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q, skillLevel }),
+        body: JSON.stringify({ query: q, skillLevel, deepSearch }),
         signal: abortRef.current.signal,
       });
 
@@ -265,19 +271,21 @@ export default function SearchPage() {
     );
   };
 
-  const filteredJobs = jobs.filter((job) => {
-    if (filters.source !== "ALL" && job.source !== filters.source) return false;
-    if (filters.hasSalary && !job.salary) return false;
-    if (filters.position.trim()) {
-      const q = filters.position.toLowerCase();
-      if (
-        !job.title.toLowerCase().includes(q) &&
-        !job.company.toLowerCase().includes(q)
-      )
-        return false;
-    }
-    return true;
-  });
+  const filteredJobs = jobs
+    .filter((job) => {
+      if (filters.source !== "ALL" && job.source !== filters.source) return false;
+      if (filters.hasSalary && !job.salary) return false;
+      if (filters.position.trim()) {
+        const q = filters.position.toLowerCase();
+        if (
+          !job.title.toLowerCase().includes(q) &&
+          !job.company.toLowerCase().includes(q)
+        )
+          return false;
+      }
+      return true;
+    })
+    .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
 
   return (
     <Box>
@@ -350,6 +358,25 @@ export default function SearchPage() {
               {progress}
             </Typography>
           )}
+          <Box sx={{ mt: 1 }}>
+            <Tooltip title="Scrapes multiple pages per site — slower but finds more results.">
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={deepSearch}
+                    onChange={(e) => setDeepSearch(e.target.checked)}
+                    disabled={scraping}
+                  />
+                }
+                label={
+                  <Typography variant="caption" color="text.secondary">
+                    Deep Search
+                  </Typography>
+                }
+              />
+            </Tooltip>
+          </Box>
         </CardContent>
       </Card>
 

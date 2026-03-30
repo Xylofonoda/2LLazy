@@ -51,6 +51,7 @@ model JobPosting {
   salary       String?
   postedAt     DateTime?
   scrapedAt    DateTime      @default(now())
+  firstSeenAt  DateTime      @default(now())
   embedding    Json?
   favourited   Boolean       @default(false)
   applications Application[]

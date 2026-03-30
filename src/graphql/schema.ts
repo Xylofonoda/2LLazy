@@ -112,6 +112,7 @@ export const typeDefs = `#graphql
       notes: String
     ): Interview!
     generateCoverLetter(jobId: ID!, useSavedCV: Boolean): CoverLetter!
+    deleteCoverLetter(id: ID!): Boolean!
     saveSiteCredentials(site: SiteName!, username: String!, password: String!): SiteCredentialStatus!
     saveUserProfile(
       name: String!

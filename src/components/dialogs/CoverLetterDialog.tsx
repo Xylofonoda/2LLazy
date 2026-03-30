@@ -9,11 +9,15 @@ import {
   Typography,
 } from "@mui/material";
 import DownloadIcon from "@mui/icons-material/Download";
+import { downloadAsDocx } from "@/lib/downloadDocx";
 
 interface CoverLetterDialogProps {
   open: boolean;
   content: string;
-  filename?: string;
+  /** Filename stem without extension, e.g. "cover-letter-react-developer" */
+  filenameStem?: string;
+  /** If provided, shows a Delete button that calls this callback. */
+  onDelete?: () => void;
   onClose: () => void;
 }
 
@@ -21,18 +25,11 @@ interface CoverLetterDialogProps {
 export function CoverLetterDialog({
   open,
   content,
-  filename = "cover-letter.txt",
+  filenameStem = "cover-letter",
+  onDelete,
   onClose,
 }: CoverLetterDialogProps) {
-  const handleDownload = () => {
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const handleDownload = () => downloadAsDocx(content, filenameStem);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -43,8 +40,13 @@ export function CoverLetterDialog({
         </Typography>
       </DialogContent>
       <DialogActions>
+        {onDelete && (
+          <Button color="error" onClick={onDelete} sx={{ mr: "auto" }}>
+            Delete
+          </Button>
+        )}
         <Button startIcon={<DownloadIcon />} onClick={handleDownload}>
-          Download .txt
+          Download .docx
         </Button>
         <Button onClick={onClose}>Close</Button>
       </DialogActions>

@@ -10,7 +10,7 @@ interface Props {
   onApply: (job: JobItem) => void;
   onToggleFavourite: (job: JobItem) => void;
   onGenerateCoverLetter: (job: JobItem) => void;
-  onViewCoverLetter: (content: string, jobTitle: string) => void;
+  onViewCoverLetter: (coverLetter: { id: string; content: string }, jobTitle: string) => void;
 }
 
 export function FavouritesJobList({
@@ -44,7 +44,7 @@ export function FavouritesJobList({
           onApply={onApply}
           onGenerateCoverLetter={onGenerateCoverLetter}
           onToggleFavourite={onToggleFavourite}
-          onViewCoverLetter={(content) => onViewCoverLetter(content, job.title)}
+          onViewCoverLetter={(coverLetter) => onViewCoverLetter(coverLetter, job.title)}
         />
       ))}
     </Stack>

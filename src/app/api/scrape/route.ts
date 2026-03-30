@@ -19,9 +19,11 @@ function dedupe(text: string | null | undefined): string {
   return first === second ? first : text;
 }
 
+const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
 type SSEEvent =
   | { type: "progress"; site: string; message: string }
-  | { type: "job"; data: ScrapedJob & { id: string; favourited: boolean; similarity: number } }
+  | { type: "job"; data: ScrapedJob & { id: string; favourited: boolean; similarity: number; isNew: boolean } }
   | { type: "complete"; total: number }
   | { type: "error"; site: string; message: string };
 
@@ -33,6 +35,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const query: string = body.query ?? "";
   const skillLevel: string = body.skillLevel ?? "";
+  const deepSearch: boolean = body.deepSearch === true;
 
   if (!query) {
     return new Response("Missing query", { status: 400 });
@@ -50,9 +53,9 @@ export async function POST(req: NextRequest) {
     name: string;
     fn: () => Promise<ScrapedJob[]>;
   }> = [
-      { name: "LinkedIn", fn: () => scrapeLinkedIn(query, skillLevel) },
-      { name: "StartupJobs", fn: () => scrapeStartupJobs(query, skillLevel) },
-      { name: "Jobstack", fn: () => scrapeJobstack(query, skillLevel) },
+      { name: "LinkedIn", fn: () => scrapeLinkedIn(query, skillLevel, deepSearch) },
+      { name: "StartupJobs", fn: () => scrapeStartupJobs(query, skillLevel, deepSearch) },
+      { name: "Jobstack", fn: () => scrapeJobstack(query, skillLevel, deepSearch) },
     ];
 
   (async () => {
@@ -64,10 +67,7 @@ export async function POST(req: NextRequest) {
         .join(" ");
       const queryEmbedding = await generateEmbedding(queryText);
 
-      const collectedJobs: Array<{
-        job: ScrapedJob & { id: string; favourited: boolean };
-        similarity: number;
-      }> = [];
+      let totalEmitted = 0;
 
       await Promise.allSettled(
         scrapers.map(async (scraper) => {
@@ -75,14 +75,39 @@ export async function POST(req: NextRequest) {
           try {
             const jobs = await scraper.fn();
 
-            // Embed + save in small concurrent batches (Ollama cap)
-            for (let i = 0; i < jobs.length; i += 3) {
+            // Pre-fetch existing DB records so we can skip re-embedding jobs seen < 24h ago
+            const sourceUrls = jobs.map((j) => j.sourceUrl);
+            const existingRecords = await prisma.jobPosting.findMany({
+              where: { sourceUrl: { in: sourceUrls } },
+              select: { id: true, sourceUrl: true, embedding: true, scrapedAt: true, favourited: true, firstSeenAt: true },
+            });
+            const existingMap = new Map(existingRecords.map((r) => [r.sourceUrl, r]));
+
+            // Embed + save + emit in batches of 5; emit each job immediately (no post-sort)
+            for (let i = 0; i < jobs.length; i += 5) {
               await Promise.allSettled(
-                jobs.slice(i, i + 3).map(async (job) => {
+                jobs.slice(i, i + 5).map(async (job) => {
                   job.title = dedupe(job.title);
                   job.company = dedupe(job.company);
                   job.location = dedupe(job.location);
                   try {
+                    const existing = existingMap.get(job.sourceUrl);
+                    const ageHours = existing?.scrapedAt
+                      ? (Date.now() - existing.scrapedAt.getTime()) / 3_600_000
+                      : Infinity;
+
+                    if (existing?.embedding && ageHours < 24) {
+                      // Cache hit: reuse stored embedding, skip Ollama call
+                      const embedding = existing.embedding as number[];
+                      const similarity = cosineSimilarity(queryEmbedding, embedding);
+                      const isNew = existing.firstSeenAt
+                        ? existing.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS
+                        : false;
+                      totalEmitted++;
+                      await send({ type: "job", data: { ...job, id: existing.id, favourited: existing.favourited, similarity, isNew } });
+                      return;
+                    }
+
                     const embeddingText = `${job.title}\n${job.title}\n${job.description.slice(0, 1200)}`;
                     const embedding = await generateEmbedding(embeddingText);
 
@@ -108,10 +133,9 @@ export async function POST(req: NextRequest) {
                     });
 
                     const similarity = cosineSimilarity(queryEmbedding, embedding);
-                    collectedJobs.push({
-                      job: { ...job, id: saved.id, favourited: saved.favourited },
-                      similarity,
-                    });
+                    const isNew = saved.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS;
+                    totalEmitted++;
+                    await send({ type: "job", data: { ...job, id: saved.id, favourited: saved.favourited, similarity, isNew } });
                   } catch (err) {
                     console.error(`[scrape] Failed to save job ${job.sourceUrl}:`, err);
                   }
@@ -125,15 +149,7 @@ export async function POST(req: NextRequest) {
         }),
       );
 
-      // Step 2: rank by similarity and stream in order
-      await send({ type: "progress", site: "Search", message: "Ranking results…" });
-      collectedJobs.sort((a, b) => b.similarity - a.similarity);
-
-      for (const { job, similarity } of collectedJobs) {
-        await send({ type: "job", data: { ...job, similarity } });
-      }
-
-      await send({ type: "complete", total: collectedJobs.length });
+      await send({ type: "complete", total: totalEmitted });
     } catch (err) {
       await send({ type: "error", site: "Search", message: err instanceof Error ? err.message : String(err) });
     } finally {

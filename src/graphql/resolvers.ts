@@ -266,6 +266,16 @@ export const resolvers = {
       return coverLetter;
     },
 
+    deleteCoverLetter: async (_: unknown, { id }: { id: string }) => {
+      // Nullify any application referencing this cover letter before deleting
+      await prisma.application.updateMany({
+        where: { coverLetterId: id },
+        data: { coverLetterId: null },
+      });
+      await prisma.coverLetter.delete({ where: { id } });
+      return true;
+    },
+
     saveSiteCredentials: async (
       _: unknown,
       { site, username, password }: { site: SiteName; username: string; password: string }

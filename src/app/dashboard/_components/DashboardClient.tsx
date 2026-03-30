@@ -21,9 +21,10 @@ export function DashboardClient({ applications, filters, sources, statusCounts }
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [clDialog, setClDialog] = useState<{ open: boolean; content: string }>({
+  const [clDialog, setClDialog] = useState<{ open: boolean; content: string; coverId: string | null }>({
     open: false,
     content: "",
+    coverId: null,
   });
   const [statusDialog, setStatusDialog] = useState<{
     open: boolean;
@@ -76,13 +77,25 @@ export function DashboardClient({ applications, filters, sources, statusCounts }
         applications={applications}
         isPending={isPending}
         onStatusClick={(id, status) => setStatusDialog({ open: true, id, status })}
-        onViewCoverLetter={(content) => setClDialog({ open: true, content })}
+        onViewCoverLetter={(content, coverId) => setClDialog({ open: true, content, coverId })}
       />
 
       <CoverLetterDialog
         open={clDialog.open}
         content={clDialog.content}
-        onClose={() => setClDialog({ open: false, content: "" })}
+        onClose={() => setClDialog({ open: false, content: "", coverId: null })}
+        onDelete={clDialog.coverId ? async () => {
+          await fetch("/api/graphql", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: `mutation Del($id: ID!) { deleteCoverLetter(id: $id) }`,
+              variables: { id: clDialog.coverId },
+            }),
+          });
+          setClDialog({ open: false, content: "", coverId: null });
+          router.refresh();
+        } : undefined}
       />
 
       {statusDialog && (

@@ -6,7 +6,7 @@ interface Props {
   applications: Application[];
   isPending: boolean;
   onStatusClick: (id: string, status: AppStatus) => void;
-  onViewCoverLetter: (content: string) => void;
+  onViewCoverLetter: (content: string, coverId: string) => void;
 }
 
 export function ApplicationList({

@@ -17,3 +17,12 @@ export async function updateApplicationStatus(
   });
   revalidatePath("/dashboard");
 }
+
+export async function getCoverLettersForJob(jobId: string) {
+  return prisma.coverLetter.findMany({
+    where: { jobId },
+    select: { id: true, content: true, generatedByAI: true },
+    orderBy: { id: "desc" },
+  });
+}
+
