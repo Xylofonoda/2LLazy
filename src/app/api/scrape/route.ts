@@ -96,9 +96,15 @@ export async function POST(req: NextRequest) {
                       ? (Date.now() - existing.scrapedAt.getTime()) / 3_600_000
                       : Infinity;
 
-                    if (existing?.embedding && ageHours < 24) {
-                      // Cache hit: reuse stored embedding, skip Ollama call
-                      const embedding = existing.embedding as number[];
+                    // Dimension mismatch means the embedding was from a different provider
+                    // (e.g., Ollama 768-dim vs OpenAI 1536-dim). Force re-embed in that case.
+                    const storedEmbedding = existing?.embedding as number[] | null | undefined;
+                    const dimensionMatch =
+                      storedEmbedding && storedEmbedding.length === queryEmbedding.length;
+
+                    if (existing?.embedding && ageHours < 24 && dimensionMatch) {
+                      // Cache hit: reuse stored embedding, skip OpenAI call
+                      const embedding = storedEmbedding!;
                       const similarity = cosineSimilarity(queryEmbedding, embedding);
                       const isNew = existing.firstSeenAt
                         ? existing.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS

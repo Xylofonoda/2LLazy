@@ -1,26 +1,23 @@
 import { prisma } from "@/lib/prisma";
-import { unstable_cache } from "next/cache";
-import { checkOllamaHealth } from "@/lib/ollama";
 import { SiteName } from "@prisma/client";
 import type { SiteCredStatus, UploadedFile, UserProfile } from "@/types";
 
 const SITES: SiteName[] = ["LINKEDIN"];
 
-const getCachedOllamaHealth = unstable_cache(checkOllamaHealth, ["ollama-health"], { revalidate: 30 });
-
 export async function getSettingsData(): Promise<{
   credentials: SiteCredStatus[];
   profile: UserProfile;
   uploadedFiles: UploadedFile[];
-  ollamaHealth: { ok: boolean; missing: string[] };
+  aiHealth: { ok: boolean; missing: string[] };
   hasOpenAI: boolean;
 }> {
-  const [creds, dbProfile, ollamaHealth, dbFiles] = await Promise.all([
+  const [creds, dbProfile, dbFiles] = await Promise.all([
     prisma.siteCredential.findMany(),
     prisma.userProfile.findFirst(),
-    getCachedOllamaHealth(),
     prisma.cvDocument.findMany({ orderBy: { uploadedAt: "desc" }, select: { id: true, originalName: true, size: true, uploadedAt: true } }),
   ]);
+
+  const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
 
   const credentials: SiteCredStatus[] = SITES.map((site) => {
     const found = creds.find((c) => c.site === site);
@@ -43,5 +40,7 @@ export async function getSettingsData(): Promise<{
     uploadedAt: f.uploadedAt.toISOString(),
   }));
 
-  return { credentials, profile, uploadedFiles, ollamaHealth, hasOpenAI: Boolean(process.env.OPENAI_API_KEY?.trim()) };
+  const aiHealth = { ok: hasOpenAI, missing: hasOpenAI ? [] : ["OPENAI_API_KEY"] };
+
+  return { credentials, profile, uploadedFiles, aiHealth, hasOpenAI };
 }

@@ -1,39 +1,28 @@
-import { ChatOpenAI } from "@langchain/openai";
-
-const OLLAMA_BASE_URL =
-  process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL ?? "nomic-embed-text";
-const CHAT_MODEL = process.env.OLLAMA_CHAT_MODEL ?? "llama3";
+import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
-const hasOpenAI = Boolean(OPENAI_API_KEY);
 
-// Warm up the embedding model so the first real search doesn't pay the VRAM load penalty
-generateEmbedding("warmup").catch(() => { });
+if (!OPENAI_API_KEY) {
+  console.warn("[ai] OPENAI_API_KEY is not set — AI features will be unavailable.");
+}
+
+const embeddings = new OpenAIEmbeddings({
+  model: "text-embedding-3-small",
+  apiKey: OPENAI_API_KEY,
+});
 
 /**
- * Generate a text embedding vector using the local Ollama embed model.
- * Returns a number[] (768 dimensions for nomic-embed-text).
+ * Generate a text embedding vector using OpenAI text-embedding-3-small.
+ * Returns a 1536-dimensional number[].
+ * NOTE: If you have existing embeddings stored from Ollama (768-dim), they will
+ * be incompatible. Re-scrape jobs to regenerate embeddings with the new model.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const res = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: EMBED_MODEL, prompt: text }),
-  });
-
-  if (!res.ok) {
-    throw new Error(
-      `Ollama embedding request failed: ${res.status} ${res.statusText}`
-    );
-  }
-
-  const data = (await res.json()) as { embedding: number[] };
-  return data.embedding;
+  return embeddings.embedQuery(text);
 }
 
 /**
- * Build the cover letter prompt shared by both chat backends.
+ * Build the cover letter prompt.
  */
 function buildCoverLetterPrompt(
   jobTitle: string,
@@ -56,8 +45,7 @@ Write only the cover letter body text. Do not include subject lines or placehold
 }
 
 /**
- * Generate a cover letter. Uses OpenAI GPT-4o-mini when OPENAI_API_KEY is set,
- * otherwise falls back to the local Ollama chat model.
+ * Generate a cover letter using GPT-4o.
  */
 export async function generateCoverLetter(
   jobTitle: string,
@@ -67,32 +55,13 @@ export async function generateCoverLetter(
   language = "English",
 ): Promise<string> {
   const prompt = buildCoverLetterPrompt(jobTitle, company, jobDescription, cvText, language);
-
-  if (hasOpenAI) {
-    const model = new ChatOpenAI({ model: "gpt-4o-mini", apiKey: OPENAI_API_KEY });
-    const result = await model.invoke([{ role: "user", content: prompt }]);
-    return (result.content as string).trim();
-  }
-
-  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: CHAT_MODEL, prompt, stream: false }),
-  });
-
-  if (!res.ok) {
-    throw new Error(
-      `Ollama generation request failed: ${res.status} ${res.statusText}`
-    );
-  }
-
-  const data = (await res.json()) as { response: string };
-  return data.response.trim();
+  const model = new ChatOpenAI({ model: "gpt-4o", apiKey: OPENAI_API_KEY });
+  const result = await model.invoke([{ role: "user", content: prompt }]);
+  return (result.content as string).trim();
 }
 
 /**
- * Stream a cover letter token-by-token. Uses OpenAI GPT-4o-mini when
- * OPENAI_API_KEY is set, otherwise falls back to local Ollama.
+ * Stream a cover letter token-by-token using GPT-4o.
  * Yields each text token as it arrives.
  */
 export async function* generateCoverLetterStream(
@@ -103,75 +72,24 @@ export async function* generateCoverLetterStream(
   language = "English",
 ): AsyncGenerator<string> {
   const prompt = buildCoverLetterPrompt(jobTitle, company, jobDescription, cvText, language);
-
-  if (hasOpenAI) {
-    const model = new ChatOpenAI({ model: "gpt-4o-mini", apiKey: OPENAI_API_KEY, streaming: true });
-    const stream = await model.stream([{ role: "user", content: prompt }]);
-    for await (const chunk of stream) {
-      const token = typeof chunk.content === "string" ? chunk.content : "";
-      if (token) yield token;
-    }
-    return;
-  }
-
-  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: CHAT_MODEL, prompt, stream: true }),
-  });
-
-  if (!res.ok || !res.body) {
-    throw new Error(
-      `Ollama generation request failed: ${res.status} ${res.statusText}`,
-    );
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const chunk = JSON.parse(line) as { response: string; done: boolean };
-        if (chunk.response) yield chunk.response;
-        if (chunk.done) return;
-      } catch {
-        // ignore partial/malformed lines
-      }
-    }
+  const model = new ChatOpenAI({ model: "gpt-4o", apiKey: OPENAI_API_KEY, streaming: true });
+  const stream = await model.stream([{ role: "user", content: prompt }]);
+  for await (const chunk of stream) {
+    const token = typeof chunk.content === "string" ? chunk.content : "";
+    if (token) yield token;
   }
 }
 
 /**
- * Check that Ollama is reachable and the required models exist.
- * When OPENAI_API_KEY is set, only the embedding model is checked
- * (chat is handled by OpenAI).
- * Returns { ok: boolean, missing: string[] }
+ * Check that the OpenAI API key is configured and reachable.
+ * Returns { ok: boolean, missing: string[] } for interface compatibility.
  */
 export async function checkOllamaHealth(): Promise<{
   ok: boolean;
   missing: string[];
 }> {
-  const requiredModels = hasOpenAI
-    ? [EMBED_MODEL]  // chat is handled by OpenAI
-    : [EMBED_MODEL, CHAT_MODEL];
-  try {
-    const res = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return { ok: false, missing: [] };
-
-    const data = (await res.json()) as { models: { name: string }[] };
-    const names = data.models.map((m) => m.name.split(":")[0]);
-    const missing = requiredModels.filter((m) => !names.includes(m.split(":")[0]));
-
-    return { ok: missing.length === 0, missing };
-  } catch {
-    return { ok: false, missing: requiredModels };
+  if (!OPENAI_API_KEY) {
+    return { ok: false, missing: ["OPENAI_API_KEY"] };
   }
+  return { ok: true, missing: [] };
 }

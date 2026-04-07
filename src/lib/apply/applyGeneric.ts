@@ -1,4 +1,4 @@
-import { Page } from "playwright";
+import { Page } from "playwright-core";
 import { randomDelay } from "@/lib/auth/sessionManager";
 import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";

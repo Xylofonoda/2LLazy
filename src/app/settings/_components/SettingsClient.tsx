@@ -9,7 +9,7 @@ interface Props {
   credentials: SiteCredStatus[];
   profile: UserProfile;
   uploadedFiles: UploadedFile[];
-  ollamaHealth: { ok: boolean; missing: string[] };
+  aiHealth: { ok: boolean; missing: string[] };
   hasOpenAI: boolean;
 }
 
@@ -17,7 +17,7 @@ export function SettingsClient({
   credentials,
   profile,
   uploadedFiles,
-  ollamaHealth,
+  aiHealth,
   hasOpenAI,
 }: Props) {
   return (
@@ -25,7 +25,7 @@ export function SettingsClient({
       <Typography variant="h4" gutterBottom>
         Settings
       </Typography>
-      <AiStatusCard hasOpenAI={hasOpenAI} ollamaHealth={ollamaHealth} />
+      <AiStatusCard hasOpenAI={hasOpenAI} aiHealth={aiHealth} />
       <UserProfileCard profile={profile} />
       <CvDocumentsCard uploadedFiles={uploadedFiles} />
       <SiteCredentialsCard credentials={credentials} />

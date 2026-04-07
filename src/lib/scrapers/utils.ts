@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { Page } from "playwright-core";
 
 /**
  * Runs `fn` over all items in sequential batches of `batchSize`.

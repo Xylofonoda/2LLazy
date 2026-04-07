@@ -10,8 +10,7 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset --force",
-    "ollama:pull": "ollama pull nomic-embed-text && ollama pull llama3"
+    "db:reset": "prisma migrate reset --force"
   },
   "dependencies": {
     "@apollo/client": "^3.12.8",
@@ -28,8 +27,10 @@
     "@mui/material-nextjs": "^7.3.9",
     "@mui/x-data-grid": "^7.23.5",
     "@mui/x-date-pickers": "^7.23.5",
+    "@netlify/plugin-nextjs": "^5.15.9",
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
+    "@sparticuz/chromium-min": "^131.0.1",
     "@types/pg": "^8.20.0",
     "cheerio": "^1.0.0",
     "dayjs": "^1.11.13",
@@ -41,6 +42,7 @@
     "pdf-parse": "^1.1.1",
     "pg": "^8.20.0",
     "playwright": "^1.50.1",
+    "playwright-core": "^1.59.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "turndown": "^7.2.2",

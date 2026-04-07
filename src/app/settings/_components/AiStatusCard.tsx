@@ -58,10 +58,10 @@ function StatusBadge({
 
 interface Props {
   hasOpenAI: boolean;
-  ollamaHealth: { ok: boolean; missing: string[] };
+  aiHealth: { ok: boolean; missing: string[] };
 }
 
-export function AiStatusCard({ hasOpenAI, ollamaHealth }: Props) {
+export function AiStatusCard({ hasOpenAI, aiHealth }: Props) {
   return (
     <Card sx={{ mb: 3 }}>
       <CardContent>
@@ -71,31 +71,19 @@ export function AiStatusCard({ hasOpenAI, ollamaHealth }: Props) {
 
         <Stack direction="row" spacing={1.5} flexWrap="wrap">
           <StatusBadge
-            label="OpenAI"
+            label="OpenAI (GPT-4o)"
             ok={hasOpenAI}
-            okText="GPT-4o-mini active"
+            okText="Active"
             errorText="Not configured"
-          />
-          <StatusBadge
-            label="Ollama"
-            ok={ollamaHealth.ok}
-            okText="All models available"
-            errorText="Issue detected"
           />
         </Stack>
 
-        {!hasOpenAI && (
-          <Alert severity="info" sx={{ mt: 2, py: 0.5 }}>
-            Add <code>OPENAI_API_KEY</code> to <code>.env</code> to enable GPT-4o-mini.
-            Without it, raw page text is used for extraction and Ollama handles cover letters.
+        {!aiHealth.ok && (
+          <Alert severity="error" sx={{ mt: 2, py: 0.5 }}>
+            <code>OPENAI_API_KEY</code> is not set. Add it to your environment variables to
+            enable AI features (embeddings, cover letters, scraping).
           </Alert>
         )}
-        {!ollamaHealth.ok &&
-          ollamaHealth.missing.map((m) => (
-            <Alert key={m} severity="warning" sx={{ mt: 1, py: 0 }}>
-              Missing model: <strong>{m}</strong> — run <code>ollama pull {m}</code>
-            </Alert>
-          ))}
       </CardContent>
     </Card>
   );

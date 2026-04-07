@@ -1,6 +1,6 @@
-import TurndownService from "turndown";
 import { getBrowser } from "@/lib/browser";
 import type { PageLink } from "../types";
+import TurndownService from "turndown";
 
 const turndown = new TurndownService({
   headingStyle: "atx",

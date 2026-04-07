@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { generateEmbedding, generateCoverLetter } from "@/lib/ollama";
+import { generateEmbedding, generateCoverLetter, checkOllamaHealth } from "@/lib/ollama";
 import { encrypt } from "@/lib/crypto";
-import { checkOllamaHealth } from "@/lib/ollama";
 import { readCvText } from "@/lib/cv";
 import { cosineSimilarity } from "@/lib/similarity";
 import { applyToJobSite } from "@/lib/apply/applyRouter";
@@ -33,7 +32,11 @@ export const resolvers = {
           embedding: true,
         },
       });
-      const jobs = allJobs.filter((j) => j.embedding !== null);
+      // Only compare jobs whose embedding dimensions match the query embedding
+      // (dimension mismatch occurs when switching embedding providers)
+      const jobs = allJobs.filter(
+        (j) => j.embedding !== null && (j.embedding as number[]).length === queryEmbedding.length
+      );
       return jobs
         .map((job) => ({
           ...job,
@@ -109,7 +112,7 @@ export const resolvers = {
       return prisma.userProfile.findFirst();
     },
 
-    ollamaHealth: async () => {
+    aiHealth: async () => {
       return checkOllamaHealth();
     },
   },

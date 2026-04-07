@@ -77,7 +77,7 @@ export const typeDefs = `#graphql
     githubUrl: String
   }
 
-  type OllamaHealth {
+  type AIHealth {
     ok: Boolean!
     missing: [String!]!
   }
@@ -91,7 +91,7 @@ export const typeDefs = `#graphql
     getCoverLetter(id: ID!): CoverLetter
     getSiteCredentials: [SiteCredentialStatus!]!
     getUserProfile: UserProfile
-    ollamaHealth: OllamaHealth!
+    aiHealth: AIHealth!
   }
 
   type Mutation {

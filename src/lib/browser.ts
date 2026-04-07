@@ -1,6 +1,38 @@
-import { chromium, Browser } from "playwright";
+import { Browser } from "playwright-core";
 
 let browserInstance: Browser | null = null;
+
+async function launchBrowser(headless = true): Promise<Browser> {
+  // In production (serverless / Netlify), use @sparticuz/chromium-min with playwright-core.
+  // In development, use the local Chromium bundled with the playwright package.
+  if (process.env.NODE_ENV === "production" || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
+    const { default: chromium } = await import("@sparticuz/chromium-min");
+    const { chromium: playwrightChromium } = await import("playwright-core");
+
+    const executablePath =
+      process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
+      (await chromium.executablePath(
+        `https://github.com/Sparticuz/chromium/releases/download/v131.0.0/chromium-v131.0.0-pack.tar`
+      ));
+
+    return playwrightChromium.launch({
+      args: chromium.args,
+      executablePath,
+      headless: chromium.headless,
+    });
+  }
+
+  const { chromium } = await import("playwright-core");
+  return chromium.launch({
+    headless,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-blink-features=AutomationControlled",
+      "--disable-infobars",
+    ],
+  });
+}
 
 /**
  * Returns a singleton Playwright Chromium browser.
@@ -11,15 +43,7 @@ export async function getBrowser(): Promise<Browser> {
     return browserInstance;
   }
 
-  browserInstance = await chromium.launch({
-    headless: process.env.PLAYWRIGHT_HEADLESS !== "false",
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-blink-features=AutomationControlled",
-      "--disable-infobars",
-    ],
-  });
+  browserInstance = await launchBrowser(true);
 
   browserInstance.on("disconnected", () => {
     browserInstance = null;
@@ -40,14 +64,7 @@ export async function getVisibleBrowser(): Promise<Browser> {
     return visibleBrowserInstance;
   }
 
-  visibleBrowserInstance = await chromium.launch({
-    headless: false,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-blink-features=AutomationControlled",
-    ],
-  });
+  visibleBrowserInstance = await launchBrowser(false);
 
   visibleBrowserInstance.on("disconnected", () => {
     visibleBrowserInstance = null;

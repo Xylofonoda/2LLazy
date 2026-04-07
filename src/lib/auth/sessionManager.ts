@@ -1,4 +1,4 @@
-import { Page, BrowserContext } from "playwright";
+import { Page, BrowserContext } from "playwright-core";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 import { getBrowser } from "@/lib/browser";
