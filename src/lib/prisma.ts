@@ -5,13 +5,17 @@ import { PrismaClient } from "@prisma/client";
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 function createPrismaClient() {
-  // Limit pool size for serverless environments (Netlify functions spin up many instances)
-  // ssl: true is required for Neon (and other hosted Postgres providers)
+  // max:1 — serverless functions are short-lived; one connection per instance is enough
+  // connectionTimeoutMillis — fail fast rather than hanging until Netlify kills the function
+  // ssl is required for Neon
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 3,
+    max: 1,
     idleTimeoutMillis: 10_000,
-    ssl: process.env.DATABASE_URL?.includes("sslmode=require") ? { rejectUnauthorized: false } : false,
+    connectionTimeoutMillis: 8_000,
+    ssl: process.env.DATABASE_URL?.includes("neon.tech") || process.env.DATABASE_URL?.includes("sslmode=require")
+      ? { rejectUnauthorized: false }
+      : false,
   });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({

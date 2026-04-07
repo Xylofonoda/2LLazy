@@ -3,6 +3,8 @@ import type { FavouriteFilters } from "@/lib/data/favourites";
 import { FavouritesClient } from "./_components/FavouritesClient";
 import type { JobFilters } from "@/components/jobs/JobFilterBar";
 
+export const dynamic = "force-dynamic";
+
 export default async function FavouritesPage({
   searchParams,
 }: {

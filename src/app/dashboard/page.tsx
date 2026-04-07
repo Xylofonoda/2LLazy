@@ -7,6 +7,8 @@ import type { ApplicationFilters } from "@/lib/data/applications";
 import { DashboardClient } from "./_components/DashboardClient";
 import type { DashboardFilters } from "@/components/dashboard/DashboardFilterBar";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage({
   searchParams,
 }: {

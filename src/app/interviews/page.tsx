@@ -1,6 +1,8 @@
 import { getCalendarEntriesForMonth } from "@/lib/data/interviews";
 import { InterviewsClient } from "./_components/InterviewsClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function InterviewsPage({
   searchParams,
 }: {

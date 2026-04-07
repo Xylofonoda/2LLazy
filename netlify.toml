@@ -5,5 +5,8 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+[functions]
+  timeout = 26
+
 [context.production.environment]
   NEXT_TELEMETRY_DISABLED = "1"
