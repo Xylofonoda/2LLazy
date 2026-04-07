@@ -81,7 +81,8 @@ export async function POST(req: NextRequest) {
               where: { sourceUrl: { in: sourceUrls } },
               select: { id: true, sourceUrl: true, embedding: true, scrapedAt: true, favourited: true, firstSeenAt: true },
             });
-            const existingMap = new Map<string, typeof existingRecords[number]>(existingRecords.map((r) => [r.sourceUrl, r]));
+            type ExistingRecord = { id: string; sourceUrl: string; embedding: number[] | null; scrapedAt: Date; favourited: boolean; firstSeenAt: Date | null };
+            const existingMap = new Map<string, ExistingRecord>(existingRecords.map((r) => [r.sourceUrl, r as ExistingRecord]));
 
             // Embed + save + emit in batches of 5; emit each job immediately (no post-sort)
             for (let i = 0; i < jobs.length; i += 5) {
