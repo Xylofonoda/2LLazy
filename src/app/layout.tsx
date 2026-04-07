@@ -5,7 +5,7 @@ import { Providers } from "@/components/Providers";
 import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "Application Fatigue",
+  title: "2LLAZY",
   description: "Find and track jobs with AI-powered cover letters and CV tailoring",
 };
 

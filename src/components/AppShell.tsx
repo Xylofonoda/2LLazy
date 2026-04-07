@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Box sx={{ p: 2.5, display: "flex", alignItems: "center", gap: 1 }}>
           <FlashOnIcon sx={{ color: "primary.main" }} />
           <Typography variant="h6" sx={{ color: "primary.main", fontSize: 16, flexGrow: 1 }}>
-            AppFatigue
+            2LLAZY
           </Typography>
           <Tooltip title="Logout">
             <IconButton size="small" onClick={() => logoutAction()} sx={{ color: "text.secondary" }}>

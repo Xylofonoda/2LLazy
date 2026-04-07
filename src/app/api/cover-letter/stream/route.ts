@@ -47,11 +47,20 @@ export async function POST(req: NextRequest) {
         await send({ token });
       }
 
-      // Persist to DB and auto-favourite atomically
+      // Persist cover letter, link it to the application (if one exists), and auto-favourite
+      const coverLetter = await prisma.coverLetter.create({
+        data: { jobId, content: fullContent, generatedByAI: true },
+      });
+
+      const application = await prisma.application.findFirst({ where: { jobId } });
+
       await prisma.$transaction([
-        prisma.coverLetter.create({
-          data: { jobId, content: fullContent, generatedByAI: true },
-        }),
+        ...(application
+          ? [prisma.application.update({
+            where: { id: application.id },
+            data: { coverLetterId: coverLetter.id },
+          })]
+          : []),
         prisma.jobPosting.update({
           where: { id: jobId },
           data: { favourited: true },

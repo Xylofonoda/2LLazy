@@ -43,7 +43,7 @@ export function LoginForm({ error }: { error?: string }) {
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
           <FlashOnIcon sx={{ color: "primary.main" }} />
           <Typography variant="h6" sx={{ color: "primary.main", fontSize: 18, fontWeight: 700 }}>
-            AppFatigue
+            2LLAZY
           </Typography>
         </Box>
         <Typography variant="body2" color="text.secondary">
