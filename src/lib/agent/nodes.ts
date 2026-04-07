@@ -1,8 +1,10 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { navigateAndExtract, chunkToRelevantSection } from "./tools/browser";
 import { JobPostingSchema } from "./types";
 import type { AgentState } from "./state";
+
+const navigateAndExtract = async (_url: string) => ({ markdown: "", links: [] as { text: string; href: string }[] });
+const chunkToRelevantSection = (content: string, max: number) => content.slice(0, max);
 
 // ─── Cost tiers ──────────────────────────────────────────────────────────────
 // Discovery: cheap, only needs to classify links  → gpt-4o-mini

@@ -1,10 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { generateEmbedding, generateCoverLetter, checkOllamaHealth } from "@/lib/ollama";
-import { encrypt } from "@/lib/crypto";
 import { readCvText } from "@/lib/cv";
 import { cosineSimilarity } from "@/lib/similarity";
-import { applyToJobSite } from "@/lib/apply/applyRouter";
-import { ApplicationStatus, Prisma, SiteName } from "@prisma/client";
+import { ApplicationStatus, Prisma } from "@prisma/client";
 
 export const resolvers = {
   Query: {
@@ -95,19 +93,6 @@ export const resolvers = {
       return prisma.coverLetter.findUnique({ where: { id } });
     },
 
-    getSiteCredentials: async () => {
-      const creds = await prisma.siteCredential.findMany();
-      const sites: SiteName[] = ["LINKEDIN"];
-      return sites.map((site) => {
-        const found = creds.find((c) => c.site === site);
-        return {
-          site,
-          configured: !!found,
-          username: found?.username ?? null,
-        };
-      });
-    },
-
     getUserProfile: async () => {
       return prisma.userProfile.findFirst();
     },
@@ -129,32 +114,6 @@ export const resolvers = {
         postedAt: updated.postedAt?.toISOString() ?? null,
         scrapedAt: updated.scrapedAt.toISOString(),
       };
-    },
-
-    applyToJob: async (
-      _: unknown,
-      { jobId, coverLetterId }: { jobId: string; coverLetterId?: string }
-    ) => {
-      const job = await prisma.jobPosting.findUniqueOrThrow({ where: { id: jobId } });
-
-      const existing = await prisma.application.findFirst({
-        where: { jobId, status: { in: ["APPLIED", "PENDING"] } },
-      });
-      if (existing) return existing;
-
-      const application = await prisma.application.create({
-        data: { jobId, status: "PENDING", coverLetterId: coverLetterId ?? null },
-        include: { job: true, coverLetter: true, interview: true },
-      });
-
-      applyToJobSite(job, application.id, coverLetterId).catch(async (err) => {
-        await prisma.application.update({
-          where: { id: application.id },
-          data: { status: "FAILED", errorMessage: String(err) },
-        });
-      });
-
-      return application;
     },
 
     updateApplicationStatus: async (
@@ -277,19 +236,6 @@ export const resolvers = {
       });
       await prisma.coverLetter.delete({ where: { id } });
       return true;
-    },
-
-    saveSiteCredentials: async (
-      _: unknown,
-      { site, username, password }: { site: SiteName; username: string; password: string }
-    ) => {
-      const encryptedPassword = encrypt(password);
-      await prisma.siteCredential.upsert({
-        where: { site },
-        create: { site, username, encryptedPassword },
-        update: { username, encryptedPassword, cookieJson: null },
-      });
-      return { site, configured: true, username };
     },
 
     saveUserProfile: async (

@@ -1,12 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // playwright-core and @sparticuz/chromium-min must not be bundled — they rely on
-  // native binaries resolved at runtime.
+  // These packages rely on native binaries or large files that must not be bundled
   serverExternalPackages: [
-    "playwright-core",
-    "playwright",
-    "@sparticuz/chromium-min",
     "pdf-parse",
     "formidable",
     "pg",

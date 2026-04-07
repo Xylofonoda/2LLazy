@@ -6,7 +6,7 @@ import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "Application Fatigue",
-  description: "Auto-apply to jobs with AI-powered cover letters",
+  description: "Find and track jobs with AI-powered cover letters and CV tailoring",
 };
 
 export default function RootLayout({

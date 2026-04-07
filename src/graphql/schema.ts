@@ -1,9 +1,8 @@
 export const typeDefs = `#graphql
   enum JobSource {
-    LINKEDIN
-    GLASSDOOR
     STARTUPJOBS
     JOBSTACK
+    COCUMA
   }
 
   enum ApplicationStatus {
@@ -12,10 +11,6 @@ export const typeDefs = `#graphql
     REJECTED
     INTERVIEW
     FAILED
-  }
-
-  enum SiteName {
-    LINKEDIN
   }
 
   type JobPosting {
@@ -61,12 +56,6 @@ export const typeDefs = `#graphql
     notes: String
   }
 
-  type SiteCredentialStatus {
-    site: SiteName!
-    configured: Boolean!
-    username: String
-  }
-
   type UserProfile {
     id: ID!
     name: String!
@@ -89,14 +78,12 @@ export const typeDefs = `#graphql
     getApplication(id: ID!): Application
     getInterviews(month: Int!, year: Int!): [Interview!]!
     getCoverLetter(id: ID!): CoverLetter
-    getSiteCredentials: [SiteCredentialStatus!]!
     getUserProfile: UserProfile
     aiHealth: AIHealth!
   }
 
   type Mutation {
     toggleFavourite(jobId: ID!): JobPosting!
-    applyToJob(jobId: ID!, coverLetterId: ID): Application!
     updateApplicationStatus(id: ID!, status: ApplicationStatus!): Application!
     scheduleInterview(
       applicationId: ID!
@@ -113,7 +100,6 @@ export const typeDefs = `#graphql
     ): Interview!
     generateCoverLetter(jobId: ID!, useSavedCV: Boolean): CoverLetter!
     deleteCoverLetter(id: ID!): Boolean!
-    saveSiteCredentials(site: SiteName!, username: String!, password: String!): SiteCredentialStatus!
     saveUserProfile(
       name: String!
       email: String!

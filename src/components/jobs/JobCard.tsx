@@ -130,7 +130,7 @@ export function JobCard({
               onClick={() => onApply?.(job)}
               disabled={isApplying}
             >
-              {isApplying ? "Sending..." : "Send to Dashboard"}
+              {isApplying ? "Tracking..." : "Track Application"}
             </Button>
 
             {job.coverLetter && onViewCoverLetter && (

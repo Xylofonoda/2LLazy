@@ -34,9 +34,9 @@ export type SourceChipColor =
   | "default";
 
 export const SOURCE_COLOR: Record<string, SourceChipColor> = {
-  LINKEDIN: "primary",
   STARTUPJOBS: "success",
   JOBSTACK: "warning",
+  COCUMA: "info",
 };
 
 /** Unified job item used in search results and favourites. */

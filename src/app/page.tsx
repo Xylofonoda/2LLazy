@@ -258,7 +258,7 @@ export default function SearchPage() {
         }}
       />
       <Typography variant="h4" gutterBottom>
-        Find &amp; Apply to Jobs
+        Find Jobs
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Enter a role and skill level. Results are focused on Czechia and ranked

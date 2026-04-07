@@ -14,11 +14,10 @@ import {
 } from "@mui/material";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import EditIcon from "@mui/icons-material/Edit";
-import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import type { Application, AppStatus } from "@/types";
 import { STATUS_COLOR, SOURCE_COLOR } from "@/types";
-import { AutoApplyDialog } from "@/components/dialogs/AutoApplyDialog";
+import { CvAdjustDialog } from "@/components/dialogs/CvAdjustDialog";
 
 interface ApplicationCardProps {
   application: Application;
@@ -34,7 +33,7 @@ export function ApplicationCard({
   onViewCoverLetter,
   onGenerateCoverLetter,
 }: ApplicationCardProps) {
-  const [autoApplyOpen, setAutoApplyOpen] = useState(false);
+  const [cvAdjustOpen, setCvAdjustOpen] = useState(false);
 
   return (
     <>
@@ -55,15 +54,6 @@ export function ApplicationCard({
               {app.appliedAt && (
                 <Typography variant="caption" color="text.secondary">
                   Applied: {new Date(app.appliedAt).toLocaleDateString()}
-                </Typography>
-              )}
-              {app.errorMessage && (
-                <Typography
-                  variant="caption"
-                  color="error.main"
-                  display="block"
-                >
-                  Couldn&apos;t auto-apply this time. Try applying yourself — good luck!
                 </Typography>
               )}
             </Box>
@@ -131,19 +121,17 @@ export function ApplicationCard({
             </Button>
           </Tooltip>
 
-          {app.status === "PENDING" && (
-            <Tooltip title="Auto-fill and submit this application">
-              <Button
-                size="small"
-                variant="outlined"
-                color="primary"
-                startIcon={<RocketLaunchIcon />}
-                onClick={() => setAutoApplyOpen(true)}
-              >
-                Auto Apply
-              </Button>
-            </Tooltip>
-          )}
+          <Tooltip title="Tailor your CV for this position">
+            <Button
+              size="small"
+              variant="outlined"
+              color="secondary"
+              startIcon={<AutoAwesomeIcon />}
+              onClick={() => setCvAdjustOpen(true)}
+            >
+              Adjust CV
+            </Button>
+          </Tooltip>
 
           {app.coverLetter && (
             <Button
@@ -180,10 +168,11 @@ export function ApplicationCard({
         </Stack>
       </Card>
 
-      <AutoApplyDialog
-        application={app}
-        open={autoApplyOpen}
-        onClose={() => setAutoApplyOpen(false)}
+      <CvAdjustDialog
+        jobId={app.job.id}
+        jobTitle={app.job.title}
+        open={cvAdjustOpen}
+        onClose={() => setCvAdjustOpen(false)}
       />
     </>
   );

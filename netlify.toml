@@ -5,13 +5,6 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-[functions]
-  # Increase timeout for scraping routes (requires Netlify Pro/Team plan)
-  # Free plan max is 10s; Pro allows up to 26s; paid Background Functions allow 15 min.
-  included_files = ["node_modules/@sparticuz/chromium-min/**"]
-  node_bundler = "esbuild"
-  external_node_modules = ["playwright-core", "@sparticuz/chromium-min"]
-
 [context.production.environment]
   NODE_ENV = "production"
   NEXT_TELEMETRY_DISABLED = "1"

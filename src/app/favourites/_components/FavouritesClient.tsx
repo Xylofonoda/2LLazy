@@ -6,7 +6,7 @@ import { Box, Typography } from "@mui/material";
 import { JobFilterBar, type JobFilters } from "@/components/jobs/JobFilterBar";
 import { CoverLetterDialog } from "@/components/dialogs/CoverLetterDialog";
 import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
-import { toggleFavourite, applyToJob } from "@/lib/actions/jobActions";
+import { toggleFavourite, trackJob } from "@/lib/actions/jobActions";
 import { FavouritesJobList } from "./FavouritesJobList";
 import type { JobItem } from "@/types";
 
@@ -20,7 +20,7 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
-  const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [trackingId, setTrackingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [deletedCoverLetterIds, setDeletedCoverLetterIds] = useState<Set<string>>(new Set());
@@ -52,19 +52,19 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
     });
   };
 
-  const handleApply = (job: JobItem) => {
-    setApplyingId(job.id);
+  const handleTrack = (job: JobItem) => {
+    setTrackingId(job.id);
     startTransition(async () => {
       try {
-        await applyToJob(job.id);
+        await trackJob(job.id);
         router.refresh();
       } catch (err) {
         setErrors((prev) => [
           ...prev,
-          `Apply failed for ${job.title}: ${String(err)}`,
+          `Track failed for ${job.title}: ${String(err)}`,
         ]);
       } finally {
-        setApplyingId(null);
+        setTrackingId(null);
       }
     });
   };
@@ -75,7 +75,7 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
         Favourites
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Jobs you&apos;ve saved. Send them to the dashboard to auto-apply.
+        Save jobs here. Click Track to add them to your dashboard.
       </Typography>
 
       <ErrorAlertList
@@ -91,9 +91,9 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
             ? { ...j, coverLetter: null }
             : j
         )}
-        applyingId={applyingId}
+        applyingId={trackingId}
         togglingId={togglingId}
-        onApply={handleApply}
+        onApply={handleTrack}
         onToggleFavourite={handleToggle}
         onViewCoverLetter={(coverLetter, jobTitle) =>
           setClDialog({ open: true, content: coverLetter.content, jobTitle, coverId: coverLetter.id })

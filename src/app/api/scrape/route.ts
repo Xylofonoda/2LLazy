@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateEmbedding } from "@/lib/ollama";
-import { scrapeLinkedIn } from "@/lib/scrapers/linkedin";
+import { scrapeCocuma } from "@/lib/scrapers/cocuma";
 import { scrapeStartupJobs } from "@/lib/scrapers/startupjobs";
 import { scrapeJobstack } from "@/lib/scrapers/jobstack";
 import { ScrapedJob } from "@/lib/scrapers/types";
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     name: string;
     fn: () => Promise<ScrapedJob[]>;
   }> = [
-      { name: "LinkedIn", fn: () => scrapeLinkedIn(query, skillLevel, deepSearch) },
+      { name: "Cocuma", fn: () => scrapeCocuma(query, skillLevel, deepSearch) },
       { name: "StartupJobs", fn: () => scrapeStartupJobs(query, skillLevel, deepSearch) },
       { name: "Jobstack", fn: () => scrapeJobstack(query, skillLevel, deepSearch) },
     ];
