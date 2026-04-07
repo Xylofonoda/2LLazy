@@ -24,6 +24,9 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Match all paths except Next.js internals and static files
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Exclude Next.js internals, static files, AND RSC prefetch requests
+  // Without excluding _next/data, middleware blocks all link prefetching
+  matcher: [
+    "/((?!_next/static|_next/image|_next/data|favicon.ico).*)",
+  ],
 };
