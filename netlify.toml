@@ -5,7 +5,7 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-[functions]
+[functions."*"]
   timeout = 26
 
 [context.production.environment]
