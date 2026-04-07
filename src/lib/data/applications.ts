@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { ApplicationStatus, JobSource } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
@@ -27,7 +28,11 @@ function buildJobWhere(filters?: Omit<ApplicationFilters, "status">): Prisma.Job
   return Object.keys(clause).length > 0 ? clause : undefined;
 }
 
-export async function getApplications(filters?: ApplicationFilters): Promise<Application[]> {
+// Cache tag used by all application-related data so server actions can
+// invalidate everything with a single revalidateTag("applications") call.
+export const APPLICATIONS_TAG = "applications";
+
+async function _getApplications(filters?: ApplicationFilters): Promise<Application[]> {
   const { status, ...rest } = filters ?? {};
   const job = buildJobWhere(rest);
   const apps = await prisma.application.findMany({
@@ -68,7 +73,7 @@ export async function getApplications(filters?: ApplicationFilters): Promise<App
   }));
 }
 
-export async function getApplicationSources(): Promise<string[]> {
+async function _getApplicationSources(): Promise<string[]> {
   const rows = await prisma.jobPosting.findMany({
     where: { applications: { some: {} } },
     distinct: ["source"],
@@ -78,7 +83,7 @@ export async function getApplicationSources(): Promise<string[]> {
   return rows.map((r) => r.source as string);
 }
 
-export async function getApplicationStatusCounts(
+async function _getApplicationStatusCounts(
   filters?: Omit<ApplicationFilters, "status">,
 ): Promise<Record<string, number>> {
   const job = buildJobWhere(filters);
@@ -95,3 +100,21 @@ export async function getApplicationStatusCounts(
   }
   return counts;
 }
+
+// Cached wrappers — results stored in Next.js Data Cache (backed by Netlify blob
+// storage in production). Each unique set of arguments is a separate cache entry.
+// All entries share the "applications" tag so a single revalidateTag invalidates all.
+export const getApplications = unstable_cache(_getApplications, ["get-applications"], {
+  revalidate: 60,
+  tags: [APPLICATIONS_TAG],
+});
+
+export const getApplicationSources = unstable_cache(_getApplicationSources, ["get-application-sources"], {
+  revalidate: 60,
+  tags: [APPLICATIONS_TAG],
+});
+
+export const getApplicationStatusCounts = unstable_cache(_getApplicationStatusCounts, ["get-application-status-counts"], {
+  revalidate: 60,
+  tags: [APPLICATIONS_TAG],
+});

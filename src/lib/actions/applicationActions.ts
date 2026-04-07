@@ -1,8 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { APPLICATIONS_TAG } from "@/lib/data/applications";
 
 const StatusSchema = z.enum(["PENDING", "APPLIED", "REJECTED", "INTERVIEW", "FAILED"]);
 
@@ -15,6 +16,7 @@ export async function updateApplicationStatus(
     where: { id },
     data: { status: validated },
   });
+  updateTag(APPLICATIONS_TAG);
   revalidatePath("/dashboard");
 }
 

@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import path from "path";
 import { randomUUID } from "crypto";
+import { SETTINGS_TAG } from "@/lib/data/settings";
 
 const ALLOWED_EXTENSIONS = new Set([".pdf", ".docx", ".doc", ".txt"]);
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -47,6 +48,7 @@ export async function uploadCvAction(
     data: { originalName: safeName, data: buf, size: buf.length },
   });
 
+  updateTag(SETTINGS_TAG);
   revalidatePath("/settings");
   return { filename: safeName };
 }
@@ -57,6 +59,7 @@ export async function deleteUploadedFileAction(id: string): Promise<{ error?: st
   } catch {
     return { error: "File not found or could not be deleted." };
   }
+  updateTag(SETTINGS_TAG);
   revalidatePath("/settings");
   return {};
 }
@@ -75,5 +78,6 @@ export async function saveUserProfile(profile: {
   } else {
     await prisma.userProfile.create({ data: profile });
   }
+  updateTag(SETTINGS_TAG);
   revalidatePath("/settings");
 }

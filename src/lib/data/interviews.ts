@@ -1,7 +1,10 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import type { CalendarEntry } from "@/types";
 
-export async function getCalendarEntriesForMonth(
+export const INTERVIEWS_TAG = "interviews";
+
+async function _getCalendarEntriesForMonth(
   month: number,
   year: number,
 ): Promise<CalendarEntry[]> {
@@ -43,4 +46,10 @@ export async function getCalendarEntriesForMonth(
     (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
   );
 }
+
+export const getCalendarEntriesForMonth = unstable_cache(
+  _getCalendarEntriesForMonth,
+  ["get-calendar-entries"],
+  { revalidate: 60, tags: [INTERVIEWS_TAG] },
+);
 

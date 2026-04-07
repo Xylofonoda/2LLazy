@@ -1,7 +1,8 @@
 import { getCalendarEntriesForMonth } from "@/lib/data/interviews";
 import { InterviewsClient } from "./_components/InterviewsClient";
 
-export const dynamic = "force-dynamic";
+// Revalidate every 60 s; server actions call revalidatePath so mutations are instant
+export const revalidate = 60;
 
 export default async function InterviewsPage({
   searchParams,

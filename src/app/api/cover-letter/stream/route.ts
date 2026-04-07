@@ -1,5 +1,8 @@
 import { NextRequest } from "next/server";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { APPLICATIONS_TAG } from "@/lib/data/applications";
+import { FAVOURITES_TAG } from "@/lib/data/favourites";
 import { generateCoverLetterStream } from "@/lib/ollama";
 import { readCvText } from "@/lib/cv";
 
@@ -68,6 +71,12 @@ export async function POST(req: NextRequest) {
       ]);
 
       await send({ done: true });
+
+      // Invalidate data cache and page cache for pages that display cover letters / favourites
+      revalidateTag(APPLICATIONS_TAG, "max");
+      revalidateTag(FAVOURITES_TAG, "max");
+      revalidatePath("/dashboard");
+      revalidatePath("/favourites");
     } catch (err) {
       await send({ error: String(err) });
     } finally {

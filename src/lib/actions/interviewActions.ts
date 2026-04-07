@@ -1,8 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import type { CalendarEventForm, ScheduleInterviewForm } from "@/types";
+import { INTERVIEWS_TAG } from "@/lib/data/interviews";
+import { APPLICATIONS_TAG } from "@/lib/data/applications";
 
 export async function scheduleInterview(
   form: ScheduleInterviewForm,
@@ -29,6 +31,8 @@ export async function scheduleInterview(
     }),
   ]);
 
+  updateTag(INTERVIEWS_TAG);
+  updateTag(APPLICATIONS_TAG);
   revalidatePath("/interviews");
   revalidatePath("/dashboard");
 }
@@ -43,6 +47,7 @@ export async function createCalendarEvent(form: CalendarEventForm): Promise<void
       notes: form.notes.trim() || null,
     },
   });
+  updateTag(INTERVIEWS_TAG);
   revalidatePath("/interviews");
 }
 
@@ -57,10 +62,12 @@ export async function updateCalendarEvent(id: string, form: CalendarEventForm): 
       notes: form.notes.trim() || null,
     },
   });
+  updateTag(INTERVIEWS_TAG);
   revalidatePath("/interviews");
 }
 
 export async function deleteCalendarEvent(id: string): Promise<void> {
   await prisma.calendarEvent.delete({ where: { id } });
+  updateTag(INTERVIEWS_TAG);
   revalidatePath("/interviews");
 }

@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { JobSource } from "@prisma/client";
 import type { JobItem } from "@/types";
@@ -10,7 +11,9 @@ export interface FavouriteFilters {
   hasSalary?: boolean;
 }
 
-export async function getFavourites(filters?: FavouriteFilters): Promise<JobItem[]> {
+export const FAVOURITES_TAG = "favourites";
+
+async function _getFavourites(filters?: FavouriteFilters): Promise<JobItem[]> {
   const { source, position, hasSalary } = filters ?? {};
   const jobs = await prisma.jobPosting.findMany({
     where: {
@@ -50,7 +53,7 @@ export async function getFavourites(filters?: FavouriteFilters): Promise<JobItem
   }));
 }
 
-export async function getFavouriteSources(): Promise<string[]> {
+async function _getFavouriteSources(): Promise<string[]> {
   const rows = await prisma.jobPosting.findMany({
     where: { favourited: true },
     distinct: ["source"],
@@ -59,3 +62,13 @@ export async function getFavouriteSources(): Promise<string[]> {
   });
   return rows.map((r) => r.source as string);
 }
+
+export const getFavourites = unstable_cache(_getFavourites, ["get-favourites"], {
+  revalidate: 60,
+  tags: [FAVOURITES_TAG],
+});
+
+export const getFavouriteSources = unstable_cache(_getFavouriteSources, ["get-favourite-sources"], {
+  revalidate: 60,
+  tags: [FAVOURITES_TAG],
+});

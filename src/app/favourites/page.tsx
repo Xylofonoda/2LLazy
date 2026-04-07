@@ -3,7 +3,8 @@ import type { FavouriteFilters } from "@/lib/data/favourites";
 import { FavouritesClient } from "./_components/FavouritesClient";
 import type { JobFilters } from "@/components/jobs/JobFilterBar";
 
-export const dynamic = "force-dynamic";
+// Revalidate every 60 s; server actions call revalidatePath so mutations are instant
+export const revalidate = 60;
 
 export default async function FavouritesPage({
   searchParams,

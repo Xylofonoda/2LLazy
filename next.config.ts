@@ -1,11 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // These packages rely on native binaries or large files that must not be bundled
+  // These packages rely on native binaries, large files, or Node.js-specific
+  // globals that must not be bundled by webpack
   serverExternalPackages: [
     "pdf-parse",
     "formidable",
-    "pg",
+    "ws",
+    "@neondatabase/serverless",
   ],
   experimental: {
     serverActions: {

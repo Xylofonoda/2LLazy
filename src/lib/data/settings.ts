@@ -1,7 +1,10 @@
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import type { UploadedFile, UserProfile } from "@/types";
 
-export async function getSettingsData(): Promise<{
+export const SETTINGS_TAG = "settings";
+
+async function _getSettingsData(): Promise<{
   profile: UserProfile;
   uploadedFiles: UploadedFile[];
   aiHealth: { ok: boolean; missing: string[] };
@@ -34,3 +37,8 @@ export async function getSettingsData(): Promise<{
 
   return { profile, uploadedFiles, aiHealth, hasOpenAI };
 }
+
+export const getSettingsData = unstable_cache(_getSettingsData, ["get-settings"], {
+  revalidate: 300,
+  tags: [SETTINGS_TAG],
+});

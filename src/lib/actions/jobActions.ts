@@ -1,7 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { FAVOURITES_TAG } from "@/lib/data/favourites";
+import { APPLICATIONS_TAG } from "@/lib/data/applications";
 
 export async function toggleFavourite(jobId: string): Promise<void> {
   const job = await prisma.jobPosting.findUniqueOrThrow({ where: { id: jobId } });
@@ -9,6 +11,7 @@ export async function toggleFavourite(jobId: string): Promise<void> {
     where: { id: jobId },
     data: { favourited: !job.favourited },
   });
+  updateTag(FAVOURITES_TAG);
   revalidatePath("/favourites");
   revalidatePath("/");
 }
@@ -23,6 +26,7 @@ export async function trackJob(jobId: string): Promise<void> {
     data: { jobId, status: "PENDING" },
   });
 
+  updateTag(APPLICATIONS_TAG);
   revalidatePath("/dashboard");
   revalidatePath("/");
 }
