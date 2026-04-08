@@ -27,10 +27,11 @@ export function DashboardClient({ applications, filters, sources, statusCounts }
     content: "",
     coverId: null,
   });
-  const [streamDlg, setStreamDlg] = useState<{ open: boolean; jobId: string | null; jobTitle: string }>({
+  const [streamDlg, setStreamDlg] = useState<{ open: boolean; jobId: string | null; jobTitle: string; completed: boolean }>({
     open: false,
     jobId: null,
     jobTitle: "",
+    completed: false,
   });
   const [statusDialog, setStatusDialog] = useState<{
     open: boolean;
@@ -84,7 +85,7 @@ export function DashboardClient({ applications, filters, sources, statusCounts }
         isPending={isPending}
         onStatusClick={(id, status) => setStatusDialog({ open: true, id, status })}
         onViewCoverLetter={(content, coverId) => setClDialog({ open: true, content, coverId })}
-        onGenerateCoverLetter={(jobId, jobTitle) => setStreamDlg({ open: true, jobId, jobTitle })}
+        onGenerateCoverLetter={(jobId, jobTitle) => setStreamDlg({ open: true, jobId, jobTitle, completed: false })}
       />
 
       <CoverLetterDialog
@@ -109,10 +110,14 @@ export function DashboardClient({ applications, filters, sources, statusCounts }
         open={streamDlg.open}
         jobId={streamDlg.jobId}
         jobTitle={streamDlg.jobTitle}
-        onClose={() => setStreamDlg({ open: false, jobId: null, jobTitle: "" })}
+        onClose={() => {
+          // If generation completed, refresh so the card shows "View Cover Letter"
+          if (streamDlg.completed) router.refresh();
+          setStreamDlg({ open: false, jobId: null, jobTitle: "", completed: false });
+        }}
         onComplete={() => {
-          setStreamDlg((prev) => ({ ...prev, open: false }));
-          router.refresh();
+          // Mark completed but keep dialog open so the user can read/download
+          setStreamDlg((prev) => ({ ...prev, completed: true }));
         }}
       />
 
