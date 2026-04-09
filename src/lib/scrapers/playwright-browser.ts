@@ -109,7 +109,7 @@ export async function pwFetch(
       await page.waitForSelector(waitSelector, { timeout: 8_000 }).catch(() => {});
     } else {
       // Small JS-settle pause — avoids full networkidle (which is very slow)
-      await page.waitForTimeout(1_500);
+      await page.waitForTimeout(2_500);
     }
 
     const html = await page.content();

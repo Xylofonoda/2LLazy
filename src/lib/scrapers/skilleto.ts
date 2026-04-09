@@ -14,11 +14,10 @@ export async function scrapeSkilleto(
   const jobs: ScrapedJob[] = [];
 
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const params = new URLSearchParams({ q: query });
-    if (city) params.set("city", city);
-    if (page > 1) params.set("page", String(page));
-
-    const searchUrl = `https://www.skilleto.cz/volna-mista/?${params.toString()}`;
+    const slug = query.toLowerCase().replace(/\s+/g, "-");
+    const searchUrl = page > 1
+      ? `https://www.skilleto.cz/skill/${slug}?page=${page}`
+      : `https://www.skilleto.cz/skill/${slug}`;
     let result: { text: string; links: Array<{ text: string; url: string }> };
 
     try {

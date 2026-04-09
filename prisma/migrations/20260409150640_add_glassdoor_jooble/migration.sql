@@ -6,5 +6,4 @@
 -- the enum.
 
 
-ALTER TYPE "JobSource" ADD VALUE 'GLASSDOOR';
 ALTER TYPE "JobSource" ADD VALUE 'JOOBLE';
