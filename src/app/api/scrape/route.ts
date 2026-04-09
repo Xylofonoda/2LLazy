@@ -7,6 +7,8 @@ import { scrapeJobstack } from "@/lib/scrapers/jobstack";
 import { scrapeSkilleto } from "@/lib/scrapers/skilleto";
 import { scrapeNoFluffJobs } from "@/lib/scrapers/nofluffjobs";
 import { scrapeJobsCz } from "@/lib/scrapers/jobscz";
+import { scrapeGlassdoor } from "@/lib/scrapers/glassdoor";
+import { scrapeJooble } from "@/lib/scrapers/jooble";
 import { ScrapedJob } from "@/lib/scrapers/types";
 import { cosineSimilarity } from "@/lib/similarity";
 
@@ -77,6 +79,8 @@ export async function POST(req: NextRequest) {
       { name: "Skilleto", fn: () => scrapeSkilleto(query, skillLevel, deepSearch, city) },
       { name: "NoFluffJobs", fn: () => scrapeNoFluffJobs(query, skillLevel, deepSearch, city) },
       { name: "Jobs.cz", fn: () => scrapeJobsCz(query, skillLevel, deepSearch, city) },
+      { name: "Glassdoor", fn: () => scrapeGlassdoor(query, skillLevel, deepSearch, city) },
+      { name: "Jooble", fn: () => scrapeJooble(query, skillLevel, deepSearch, city) },
     ];
 
   (async () => {
@@ -120,10 +124,6 @@ export async function POST(req: NextRequest) {
                 embedding: r.embedding ? JSON.parse(r.embedding) : null,
               } as ExistingRecord);
             }
-
-            // Embed + save all jobs first, collect results, then rank and filter before emitting
-            type RankedJob = ScrapedJob & { id: string; favourited: boolean; similarity: number; isNew: boolean };
-            const ranked: RankedJob[] = [];
 
             await send({ type: "progress", site: scraper.name, message: `Ranking ${scraper.name} results…` });
 
@@ -193,7 +193,12 @@ export async function POST(req: NextRequest) {
                       // Slight boost for having any salary info (user prefers transparent pay)
                       similarity = Math.min(1, similarity + 0.02);
                     }
-                    ranked.push({ ...job, id, favourited, similarity, isNew });
+
+                    // Emit immediately (emit-as-you-go streaming)
+                    if (similarity >= SIMILARITY_THRESHOLD) {
+                      totalEmitted++;
+                      await send({ type: "job", data: { ...job, id, favourited, similarity, isNew } });
+                    }
                   } catch (err) {
                     console.error(`[scrape] Failed to save job ${job.sourceUrl}:`, err);
                   }
@@ -201,16 +206,6 @@ export async function POST(req: NextRequest) {
               );
             }
 
-            // Filter by threshold, sort by relevance, cap at MAX_PER_SOURCE
-            const topJobs = ranked
-              .filter((j) => j.similarity >= SIMILARITY_THRESHOLD)
-              .sort((a, b) => b.similarity - a.similarity)
-              .slice(0, MAX_PER_SOURCE);
-
-            for (const jobData of topJobs) {
-              totalEmitted++;
-              await send({ type: "job", data: jobData });
-            }
           } catch (err) {
             let message = "Unknown error";
             if (err instanceof Error) {

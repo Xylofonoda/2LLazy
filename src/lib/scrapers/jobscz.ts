@@ -1,10 +1,9 @@
 /**
  * Jobs.cz scraper — Czech's largest job board (by Alma Career).
  * URL pattern: https://www.jobs.cz/prace/?q[]=react
- * The site is a React SPA but does have server-side rendered content for SEO.
- * We attempt HTML scraping with strict browser headers; if blocked, we skip gracefully.
+ * Uses Playwright because the site is a React SPA.
  */
-import { fetchPage } from "./fetcher";
+import { pwFetch } from "./playwright-browser";
 import { batchProcess } from "./utils";
 import { extractJobFromText } from "./extract";
 import { ScrapedJob } from "./types";
@@ -29,24 +28,19 @@ export async function scrapeJobsCz(
     let result: { text: string; links: Array<{ text: string; url: string }> };
 
     try {
-      result = await fetchPage(searchUrl);
+      result = await pwFetch(searchUrl, "[data-jobad-id], [class*='SearchResultCard'], a[href*='/rpd/']");
     } catch {
       break;
     }
 
     const { text: pageText, links } = result;
 
-    // jobs.cz is a SPA — if we get no meaningful links, bail
-    const jobLinks = links.filter((l) => /jobs\.cz\/rpd\/|jobs\.cz\/prace\/[^?#]+\/[a-z0-9-]+/i.test(l.url));
-    if (jobLinks.length === 0 && !pageText.includes("nabídka")) break;
-
-    // Use all links as candidates (extractRelevantJobsFromPage will filter by pattern)
     const relevant = await extractRelevantJobsFromPage(query, skillLevel, pageText, links);
     if (relevant.length === 0) break;
 
     const batchedJobs = await batchProcess(relevant, 5, async ({ title, url }) => {
       try {
-        const { text } = await fetchPage(url);
+        const { text } = await pwFetch(url);
         const extracted = await extractJobFromText(text, { url, title, company: "", location: city || "Czech Republic" });
         if (!extracted.title) return null;
 

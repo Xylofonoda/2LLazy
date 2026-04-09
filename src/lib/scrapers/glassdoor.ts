@@ -1,40 +1,48 @@
+/**
+ * Glassdoor scraper — uses Playwright to bypass basic bot protection.
+ * URL: https://www.glassdoor.com/Job/czech-republic-{query}-jobs-SRCH_IL.0,14_IN77.htm
+ * Note: Glassdoor has heavy anti-bot; Playwright without stealth may still be blocked.
+ * This scraper fails gracefully — errors surface as SSE error events, not crashes.
+ */
 import { pwFetch } from "./playwright-browser";
 import { batchProcess } from "./utils";
 import { extractJobFromText } from "./extract";
 import { ScrapedJob } from "./types";
 import { extractRelevantJobsFromPage } from "@/lib/ai";
 
-export async function scrapeSkilleto(
+function buildGlassdoorUrl(query: string, page: number): string {
+  const slug = query.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const offset = (page - 1) * 30;
+  const base = `https://www.glassdoor.com/Job/czech-republic-${slug}-jobs-SRCH_IL.0,14_IN77_KO15,${15 + slug.length}.htm`;
+  return page > 1 ? `${base}?start=${offset}` : base;
+}
+
+export async function scrapeGlassdoor(
   query: string,
   skillLevel: string,
   deepSearch = false,
   city = "",
 ): Promise<ScrapedJob[]> {
-  const MAX_PAGES = deepSearch ? 3 : 1;
+  const MAX_PAGES = deepSearch ? 2 : 1;
   const jobs: ScrapedJob[] = [];
 
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const params = new URLSearchParams({ q: query });
-    if (city) params.set("city", city);
-    if (page > 1) params.set("page", String(page));
+    const searchUrl = buildGlassdoorUrl(query, page);
 
-    const searchUrl = `https://www.skilleto.cz/volna-mista/?${params.toString()}`;
     let result: { text: string; links: Array<{ text: string; url: string }> };
-
     try {
-      // Skilleto is a SPA — needs JS rendering
-      result = await pwFetch(searchUrl, "[class*='job'], [class*='offer'], [class*='position'], a[href*='/pozice/']");
+      result = await pwFetch(searchUrl, "[data-test='jobListing'], .JobCard, [class*='jobCard']");
     } catch {
       break;
     }
 
     const { text: pageText, links } = result;
-    if (!links.length && !pageText) break;
+    if (!pageText || pageText.length < 200) break; // blocked / empty
 
     const relevant = await extractRelevantJobsFromPage(query, skillLevel, pageText, links);
     if (relevant.length === 0) break;
 
-    const batchedJobs = await batchProcess(relevant, 5, async ({ title, url }) => {
+    const batchedJobs = await batchProcess(relevant, 4, async ({ title, url }) => {
       try {
         const { text } = await pwFetch(url);
         const extracted = await extractJobFromText(text, { url, title, company: "", location: city || "Czech Republic" });
@@ -46,7 +54,7 @@ export async function scrapeSkilleto(
           location: extracted.location,
           description: extracted.description,
           sourceUrl: url,
-          source: "SKILLETO" as const,
+          source: "GLASSDOOR" as const,
           salary: extracted.salary || undefined,
           workType: extracted.workType || undefined,
         };
@@ -56,15 +64,6 @@ export async function scrapeSkilleto(
     });
 
     jobs.push(...batchedJobs);
-
-    if (deepSearch) {
-      const { prisma } = await import("@/lib/prisma");
-      const pageUrls = relevant.map((j) => j.url);
-      const existingCount = await prisma.jobPosting.count({
-        where: { sourceUrl: { in: pageUrls } },
-      });
-      if (existingCount === pageUrls.length) break;
-    }
   }
 
   return jobs;

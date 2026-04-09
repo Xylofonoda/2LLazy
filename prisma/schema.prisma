@@ -18,6 +18,8 @@ enum JobSource {
   SKILLETO
   NOFLUFFJOBS
   JOBSCZ
+  GLASSDOOR
+  JOOBLE
 }
 
 enum ApplicationStatus {

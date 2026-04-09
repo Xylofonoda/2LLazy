@@ -1,10 +1,15 @@
+/**
+ * Jooble scraper — uses Playwright to bypass 403 bot protection.
+ * URL: https://cz.jooble.org/jobs-{query}
+ * Falls back gracefully if still blocked.
+ */
 import { pwFetch } from "./playwright-browser";
 import { batchProcess } from "./utils";
 import { extractJobFromText } from "./extract";
 import { ScrapedJob } from "./types";
 import { extractRelevantJobsFromPage } from "@/lib/ai";
 
-export async function scrapeSkilleto(
+export async function scrapeJooble(
   query: string,
   skillLevel: string,
   deepSearch = false,
@@ -13,23 +18,24 @@ export async function scrapeSkilleto(
   const MAX_PAGES = deepSearch ? 3 : 1;
   const jobs: ScrapedJob[] = [];
 
+  const slug = encodeURIComponent(query.replace(/\s+/g, "-"));
+  const citySlug = city ? encodeURIComponent(city) : "";
+
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const params = new URLSearchParams({ q: query });
-    if (city) params.set("city", city);
-    if (page > 1) params.set("page", String(page));
+    const base = citySlug
+      ? `https://cz.jooble.org/jobs-${slug}/${citySlug}`
+      : `https://cz.jooble.org/jobs-${slug}`;
+    const searchUrl = page > 1 ? `${base}?p=${page}` : base;
 
-    const searchUrl = `https://www.skilleto.cz/volna-mista/?${params.toString()}`;
     let result: { text: string; links: Array<{ text: string; url: string }> };
-
     try {
-      // Skilleto is a SPA — needs JS rendering
-      result = await pwFetch(searchUrl, "[class*='job'], [class*='offer'], [class*='position'], a[href*='/pozice/']");
+      result = await pwFetch(searchUrl, "[class*='job-item'], [class*='vacancy'], article[class*='job']");
     } catch {
       break;
     }
 
     const { text: pageText, links } = result;
-    if (!links.length && !pageText) break;
+    if (!pageText || pageText.length < 200) break;
 
     const relevant = await extractRelevantJobsFromPage(query, skillLevel, pageText, links);
     if (relevant.length === 0) break;
@@ -46,7 +52,7 @@ export async function scrapeSkilleto(
           location: extracted.location,
           description: extracted.description,
           sourceUrl: url,
-          source: "SKILLETO" as const,
+          source: "JOOBLE" as const,
           salary: extracted.salary || undefined,
           workType: extracted.workType || undefined,
         };
