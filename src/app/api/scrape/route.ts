@@ -33,6 +33,7 @@ const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 type SSEEvent =
   | { type: "progress"; site: string; message: string }
   | { type: "job"; data: ScrapedJob & { id: string; favourited: boolean; similarity: number; isNew: boolean } }
+  | { type: "scraperDone"; site: string; doneCount: number; total: number }
   | { type: "complete"; total: number }
   | { type: "error"; site: string; message: string };
 function sseChunk(event: SSEEvent): string {
@@ -92,6 +93,8 @@ export async function POST(req: NextRequest) {
       const queryEmbedding = await generateEmbedding(expandedQuery);
 
       let totalEmitted = 0;
+      let doneCount = 0;
+      const totalScrapers = scrapers.length;
       const SIMILARITY_THRESHOLD = 0.30;
       const MAX_PER_SOURCE = deepSearch ? Infinity : 20;
 
@@ -220,6 +223,9 @@ export async function POST(req: NextRequest) {
             }
             console.error(`[scrape] ${scraper.name} error:`, err);
             await send({ type: "error", site: scraper.name, message });
+          } finally {
+            doneCount++;
+            await send({ type: "scraperDone", site: scraper.name, doneCount, total: totalScrapers });
           }
         }),
       );

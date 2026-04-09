@@ -31,11 +31,12 @@ import type { JobItem } from "@/types";
 type JobResult = JobItem;
 
 interface ScrapeEvent {
-  type: "progress" | "job" | "complete" | "error";
+  type: "progress" | "job" | "complete" | "error" | "scraperDone";
   site?: string;
   message?: string;
   data?: JobResult;
   total?: number;
+  doneCount?: number;
 }
 
 const SKILL_LEVELS = ["Junior", "Mid", "Senior", "Lead", "Any"];
@@ -48,6 +49,7 @@ export default function SearchPage() {
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
   const [scraping, setScraping] = useState(false);
+  const [scrapePercent, setScrapePercent] = useState(0);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [filters, setFilters] = useState<JobFilters>(DEFAULT_JOB_FILTERS);
@@ -129,6 +131,7 @@ export default function SearchPage() {
     jobArrivalIndexRef.current = new Map();
     arrivalCountRef.current = 0;
     setScraping(true);
+    setScrapePercent(0);
     setProgress("Starting scrape...");
 
     abortRef.current = new AbortController();
@@ -164,6 +167,8 @@ export default function SearchPage() {
             const event = JSON.parse(line.slice(6)) as ScrapeEvent;
             if (event.type === "progress") {
               setProgress(event.message ?? null);
+            } else if (event.type === "scraperDone" && event.doneCount != null && event.total != null) {
+              setScrapePercent(Math.round((event.doneCount / event.total) * 100));
             } else if (event.type === "job" && event.data) {
               const jobId = event.data.id;
               if (!newJobIdsRef.current.has(jobId)) {
@@ -175,6 +180,7 @@ export default function SearchPage() {
                 return exists ? prev : [...prev, event.data!];
               });
             } else if (event.type === "complete") {
+              setScrapePercent(100);
               setProgress(`Done — ${event.total} jobs found`);
               setScraping(false);
             } else if (event.type === "error") {
@@ -196,6 +202,7 @@ export default function SearchPage() {
               return exists ? prev : [...prev, event.data!];
             });
           } else if (event.type === "complete") {
+            setScrapePercent(100);
             setProgress(`Done — ${event.total} jobs found`);
             setScraping(false);
           }
@@ -277,6 +284,45 @@ export default function SearchPage() {
           },
         }}
       />
+
+      {/* ── Floating scrape progress circle (top-right, visible while scraping) ── */}
+      {scraping && (
+        <Box
+          sx={{
+            position: "fixed",
+            top: 16,
+            right: 16,
+            zIndex: 1300,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 64,
+            height: 64,
+            borderRadius: "50%",
+            bgcolor: "background.paper",
+            boxShadow: 4,
+          }}
+        >
+          <CircularProgress
+            variant="determinate"
+            value={scrapePercent}
+            size={56}
+            thickness={4}
+            sx={{ color: scrapePercent === 100 ? "success.main" : "primary.main" }}
+          />
+          <Typography
+            variant="caption"
+            sx={{
+              position: "absolute",
+              fontWeight: 700,
+              fontSize: "0.7rem",
+              color: "text.primary",
+            }}
+          >
+            {scrapePercent}%
+          </Typography>
+        </Box>
+      )}
 
       {/* ── Page header ──────────────────────────────────────────────── */}
       <Box sx={{ mb: 3 }}>
