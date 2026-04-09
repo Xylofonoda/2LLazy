@@ -1,4 +1,5 @@
-import { Stack, Typography } from "@mui/material";
+import { Stack, Typography, Alert, Button } from "@mui/material";
+import Link from "next/link";
 import { ApplicationCard } from "@/components/dashboard/ApplicationCard";
 import type { Application, AppStatus } from "@/types";
 
@@ -35,9 +36,21 @@ export function ApplicationList({
           />
         ))}
         {applications.length === 0 && (
-          <Typography variant="body2" color="text.secondary">
-            No applications match the current filters.
-          </Typography>
+          <Alert
+            severity="info"
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 2,
+              flexWrap: "wrap",
+            }}
+          >
+            <span>No tracked applications yet. Add jobs from Favourites to start your pipeline.</span>
+            <Button component={Link} href="/favourites" variant="outlined" size="small">
+              Open Favourites
+            </Button>
+          </Alert>
         )}
       </Stack>
     </>

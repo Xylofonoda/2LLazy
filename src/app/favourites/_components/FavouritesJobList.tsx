@@ -1,4 +1,5 @@
-import { Stack, Typography } from "@mui/material";
+import { Stack, Typography, Alert, Button } from "@mui/material";
+import Link from "next/link";
 import { JobCard } from "@/components/jobs/JobCard";
 import type { JobItem } from "@/types";
 
@@ -21,9 +22,22 @@ export function FavouritesJobList({
 }: Props) {
   if (jobs.length === 0) {
     return (
-      <Typography color="text.secondary" sx={{ mt: 4, textAlign: "center" }}>
-        No favourites yet. Search for jobs and click &ldquo;Interested&rdquo; to save them here.
-      </Typography>
+      <Alert
+        severity="info"
+        sx={{
+          mt: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 2,
+          flexWrap: "wrap",
+        }}
+      >
+        <span>No favourites yet. Save jobs from Search using the Interested button.</span>
+        <Button component={Link} href="/" variant="outlined" size="small">
+          Go to Search
+        </Button>
+      </Alert>
     );
   }
 

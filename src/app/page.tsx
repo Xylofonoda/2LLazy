@@ -19,6 +19,7 @@ import {
   Switch,
   FormControlLabel,
   Tooltip,
+  Alert,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { JobCard } from "@/components/jobs/JobCard";
@@ -344,6 +345,18 @@ export default function SearchPage() {
         errors={errors}
         onDismiss={(i) => setErrors((prev) => prev.filter((_, j) => j !== i))}
       />
+
+      {!scraping && jobs.length === 0 && !progress && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Start with a role like <strong>Frontend Developer</strong> or <strong>Data Engineer</strong>, then press Search.
+        </Alert>
+      )}
+
+      {!scraping && jobs.length === 0 && progress?.startsWith("Done") && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          No jobs found for this search yet. Try broader keywords, set skill level to <strong>Any</strong>, or enable <strong>Deep Search</strong>.
+        </Alert>
+      )}
 
       {jobs.length > 0 && (
         <>

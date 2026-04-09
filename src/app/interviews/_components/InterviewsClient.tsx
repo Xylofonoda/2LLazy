@@ -130,6 +130,25 @@ export function InterviewsClient({ initialEntries, month, year }: Props) {
         onNext={() => navigateMonth(1)}
       />
 
+      {initialEntries.length === 0 && (
+        <Alert
+          severity="info"
+          sx={{
+            mb: 2,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+            flexWrap: "wrap",
+          }}
+        >
+          <span>No events in this month yet. Add an interview or reminder to stay on top of your process.</span>
+          <Button variant="outlined" size="small" onClick={() => openCreateDialog()}>
+            Add Event
+          </Button>
+        </Alert>
+      )}
+
       <CalendarGrid
         currentMonth={currentMonth}
         entries={initialEntries}
