@@ -39,6 +39,9 @@ export const SOURCE_COLOR: Record<string, SourceChipColor> = {
   STARTUPJOBS: "success",
   JOBSTACK: "warning",
   COCUMA: "info",
+  SKILLETO: "secondary",
+  NOFLUFFJOBS: "primary",
+  JOBSCZ: "error",
 };
 
 /** Unified job item used in search results and favourites. */
@@ -51,6 +54,7 @@ export interface JobItem {
   sourceUrl: string;
   source: string;
   salary?: string;
+  workType?: string;
   /** Only present on search results (0–1 cosine similarity). */
   similarity?: number;
   favourited?: boolean;

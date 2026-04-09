@@ -2,6 +2,7 @@ import { fetchPage } from "./fetcher";
 import { batchProcess } from "./utils";
 import { extractJobFromText } from "./extract";
 import { ScrapedJob } from "./types";
+import { extractRelevantJobsFromPage } from "@/lib/ai";
 
 const SENIORITY_MAP: Record<string, string> = {
   Junior: "junior",
@@ -18,41 +19,22 @@ export async function scrapeCocuma(
   const seniority = SENIORITY_MAP[skillLevel];
   const seniorityParam = seniority ? `&seniority=${seniority}` : "";
   const MAX_PAGES = deepSearch ? 3 : 1;
-  const perPage = deepSearch ? 25 : 10;
   const jobs: ScrapedJob[] = [];
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const searchUrl =
-      `https://www.cocuma.cz/jobs/?search=${encodeURIComponent(query)}${seniorityParam}` +
+      `https://www.cocuma.cz/jobs/?q=${encodeURIComponent(query)}${seniorityParam}` +
       (page > 1 ? `&page=${page}` : "");
 
-    const { links } = await fetchPage(searchUrl);
+    const { text: pageText, links } = await fetchPage(searchUrl);
 
-    // Job detail pages are deeper than /jobs/ (e.g. /jobs/company/position-slug)
-    const jobLinks = links
-      .filter((l) => {
-        try {
-          const u = new URL(l.url);
-          const parts = u.pathname.split("/").filter(Boolean);
-          return u.hostname.includes("cocuma.cz") && parts[0] === "jobs" && parts.length >= 2;
-        } catch {
-          return false;
-        }
-      })
-      .filter((l, i, arr) => arr.findIndex((x) => x.url === l.url) === i) // dedupe
-      .slice(0, perPage);
+    // GPT reads the listing page like a human and returns only relevant job {title, url} pairs
+    const relevant = await extractRelevantJobsFromPage(query, skillLevel, pageText, links);
+    if (relevant.length === 0) break;
 
-    if (jobLinks.length === 0) break;
-
-    const batchedJobs = await batchProcess(jobLinks, 6, async (link) => {
-      const { text } = await fetchPage(link.url);
-      const seed = {
-        url: link.url,
-        title: link.text,
-        company: "",
-        location: "Czech Republic",
-      };
-      const extracted = await extractJobFromText(text, seed);
+    const batchedJobs = await batchProcess(relevant, 6, async ({ title, url }) => {
+      const { text } = await fetchPage(url);
+      const extracted = await extractJobFromText(text, { url, title, company: "", location: "Czech Republic" });
       if (!extracted.title) return null;
 
       return {
@@ -60,9 +42,10 @@ export async function scrapeCocuma(
         company: extracted.company,
         location: extracted.location,
         description: extracted.description,
-        sourceUrl: link.url,
+        sourceUrl: url,
         source: "COCUMA" as const,
         salary: extracted.salary || undefined,
+        workType: extracted.workType || undefined,
       };
     });
 
@@ -70,7 +53,7 @@ export async function scrapeCocuma(
 
     if (deepSearch) {
       const { prisma } = await import("@/lib/prisma");
-      const pageUrls = jobLinks.map((l) => l.url);
+      const pageUrls = relevant.map((j) => j.url);
       const existingCount = await prisma.jobPosting.count({
         where: { sourceUrl: { in: pageUrls } },
       });

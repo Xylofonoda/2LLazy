@@ -1,7 +1,67 @@
-import { fetchPage } from "./fetcher";
 import { ScrapedJob } from "./types";
-import { batchProcess } from "./utils";
-import { extractJobFromText } from "./extract";
+import { extractRelevantJobsFromPage } from "@/lib/ai";
+import { Agent } from "undici";
+
+const BASE = "https://www.startupjobs.cz";
+
+interface ApiOffer {
+  id: number;
+  name: string;
+  description: string;
+  url: string;
+  company: string;
+  locations: string;
+  seniorities: string[];
+  salary: { min?: number; max?: number; measure?: string; currency?: string } | null;
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function formatSalary(salary: ApiOffer["salary"]): string | undefined {
+  if (!salary) return undefined;
+  const currency = salary.currency ?? "CZK";
+  const period = salary.measure === "monthly" ? "/mo" : salary.measure === "yearly" ? "/yr" : "";
+  if (salary.min && salary.max) return `${salary.min.toLocaleString()} – ${salary.max.toLocaleString()} ${currency}${period}`;
+  if (salary.min) return `From ${salary.min.toLocaleString()} ${currency}${period}`;
+  if (salary.max) return `Up to ${salary.max.toLocaleString()} ${currency}${period}`;
+  return undefined;
+}
+
+const HEADERS = {
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "cs,en;q=0.9",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Referer: "https://www.startupjobs.cz/nabidky",
+  "sec-fetch-dest": "empty",
+  "sec-fetch-mode": "cors",
+  "sec-fetch-site": "same-origin",
+};
+
+const agent = new Agent({ connect: { timeout: 30_000 } });
+
+async function fetchWithRetry(url: string, retries = 3, delayMs = 1500): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: HEADERS,
+        // @ts-expect-error undici dispatcher not in fetch type definitions
+        dispatcher: agent,
+      });
+      if (res.ok) return res;
+      const wait = res.status === 429 ? delayMs * attempt * 2 : delayMs * attempt;
+      if (attempt < retries) await new Promise((r) => setTimeout(r, wait));
+    } catch (err) {
+      if (attempt === retries) {
+        if (err instanceof Error) throw err;
+        throw new Error(`StartupJobs fetch failed: ${String(err)}`);
+      }
+      await new Promise((r) => setTimeout(r, delayMs * attempt));
+    }
+  }
+  throw new Error(`StartupJobs: all ${retries} fetch attempts failed for ${url}`);
+}
 
 export async function scrapeStartupJobs(
   query: string,
@@ -16,65 +76,51 @@ export async function scrapeStartupJobs(
   };
   const seniority = seniorityMap[skillLevel];
   const MAX_PAGES = deepSearch ? 5 : 2;
-  const perPage = deepSearch ? 25 : 10;
+  const perPage = deepSearch ? 25 : 20;
   const jobs: ScrapedJob[] = [];
 
-  // Build search URLs — try text search first, then fall back to category slugs.
-  // Text search (/nabidky?search=) is more flexible than category slug browsing.
-  const buildSearchUrl = (pageNum: number): string => {
-    const params = new URLSearchParams({ search: query });
+  for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
+    const params = new URLSearchParams({ search: query, limit: String(perPage) });
     if (seniority) params.set("seniority", seniority);
     if (pageNum > 1) params.set("page", String(pageNum));
-    return `https://www.startupjobs.cz/nabidky?${params.toString()}`;
-  };
 
-  for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
-    const searchUrl = buildSearchUrl(pageNum);
-    const { links } = await fetchPage(searchUrl);
+    const apiUrl = `${BASE}/api/offers?${params.toString()}`;
+    const res = await fetchWithRetry(apiUrl);
 
-    type CardSeed = { url: string; title: string; company: string; location: string };
-    // Job detail URLs contain /nabidka/ (singular) — list page uses /nabidky/ (plural)
-    const seeds: CardSeed[] = links
-      .filter(
-        (l) => l.url.includes("startupjobs.cz") && l.url.includes("/nabidka/"),
-      )
-      .filter((l, i, arr) => arr.findIndex((x) => x.url === l.url) === i)
-      .slice(0, perPage)
-      .map((l) => ({
-        url: l.url,
-        title: l.text || l.url.split("/nabidka/")[1]?.replace(/-/g, " ") || "",
-        company: "",
-        location: "Czech Republic",
-      }));
+    const data = await res.json() as { resultSet?: ApiOffer[] };
+    const resultSet = data.resultSet ?? [];
+    if (resultSet.length === 0) break;
 
-    if (seeds.length === 0) break;
+    // GPT reads the titles like a human and picks only the relevant ones
+    const titleLinks = resultSet.map((i) => ({ text: i.name ?? "", url: `${BASE}${i.url}` }));
+    const relevant = await extractRelevantJobsFromPage(query, skillLevel, "", titleLinks);
+    const relevantUrls = new Set(relevant.map((r) => r.url));
 
-    const batchedJobs = await batchProcess(seeds, 6, async (seed) => {
-      const { text } = await fetchPage(seed.url);
-      const extracted = await extractJobFromText(text, seed);
-      if (!extracted.title) return null;
-
-      return {
-        title: extracted.title,
-        company: extracted.company,
-        location: extracted.location,
-        description: extracted.description,
-        sourceUrl: seed.url,
+    for (const item of resultSet) {
+      const sourceUrl = `${BASE}${item.url}`;
+      if (!relevantUrls.has(sourceUrl)) continue;
+      jobs.push({
+        title: item.name ?? "",
+        company: item.company ?? "",
+        location: item.locations || "Czech Republic",
+        description: stripHtml(item.description ?? "").slice(0, 4000),
+        sourceUrl,
         source: "STARTUPJOBS" as const,
-        salary: extracted.salary || undefined,
-      };
-    });
-
-    jobs.push(...batchedJobs);
+        salary: formatSalary(item.salary),
+      });
+    }
 
     if (deepSearch) {
       const { prisma } = await import("@/lib/prisma");
-      const pageSourceUrls = seeds.map((s) => s.url);
+      const urls = resultSet.map((i) => `${BASE}${i.url}`);
       const existingCount = await prisma.jobPosting.count({
-        where: { sourceUrl: { in: pageSourceUrls } },
+        where: { sourceUrl: { in: urls } },
       });
-      if (existingCount === pageSourceUrls.length) break;
+      if (existingCount === urls.length) break;
     }
+
+    // Small polite delay between pages to avoid rate limiting
+    if (pageNum < MAX_PAGES) await new Promise((r) => setTimeout(r, 800));
   }
 
   return jobs;

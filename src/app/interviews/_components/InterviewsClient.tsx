@@ -135,11 +135,15 @@ export function InterviewsClient({ initialEntries, month, year }: Props) {
           severity="info"
           sx={{
             mb: 2,
-            display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
-            gap: 2,
-            flexWrap: "wrap",
+            "& .MuiAlert-message": {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexGrow: 1,
+              gap: 2,
+              flexWrap: "wrap",
+            },
           }}
         >
           <span>No events in this month yet. Add an interview or reminder to stay on top of your process.</span>

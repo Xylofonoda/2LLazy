@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { generateEmbedding, generateCoverLetter, checkOllamaHealth } from "@/lib/ollama";
+import { generateEmbedding, generateCoverLetter, checkOllamaHealth } from "@/lib/ai";
 import { readCvText } from "@/lib/cv";
 import { cosineSimilarity } from "@/lib/similarity";
 import { ApplicationStatus } from "@prisma/client";

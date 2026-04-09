@@ -25,6 +25,10 @@ export default async function FavouritesPage({
     source: sp.source ?? "ALL",
     position: sp.position ?? "",
     hasSalary: sp.hasSalary === "true",
+    workType: sp.workType ?? "ALL",
+    city: sp.city ?? "",
+    salaryMin: sp.salaryMin ?? "",
+    salaryMax: sp.salaryMax ?? "",
   };
   return <FavouritesClient jobs={jobs} filters={currentFilters} sources={sources} />;
 }

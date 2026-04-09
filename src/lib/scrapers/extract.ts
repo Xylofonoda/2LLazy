@@ -8,6 +8,7 @@ export interface ExtractedJob {
   location: string;
   salary: string;
   description: string;
+  workType: string;
 }
 
 export interface JobHint {
@@ -23,7 +24,8 @@ Return ONLY a JSON object with these exact keys:
 - "company": the employer / company name (string)
 - "location": city, country, or "Remote" (string)
 - "salary": salary range if visible on the page, otherwise "" (string)
-- "description": the full job description text, max 3000 characters (string)`;
+- "description": the full job description text, max 3000 characters (string)
+- "workType": one of "Remote", "Hybrid", "Onsite", or "" if not clear (string)`;
 
 /**
  * Uses GPT-4o-mini to extract structured job data from raw page body text.
@@ -41,6 +43,7 @@ export async function extractJobFromText(
     location: hint.location ?? "Remote",
     salary: "",
     description: pageText.slice(0, 4000).trim(),
+    workType: "",
   };
 
   if (!OPENAI_API_KEY) return fallback;
@@ -68,6 +71,7 @@ export async function extractJobFromText(
       location: parsed.location?.trim() || fallback.location,
       salary: parsed.salary?.trim() ?? "",
       description: (parsed.description?.trim() || fallback.description).slice(0, 4000),
+      workType: parsed.workType?.trim() ?? "",
     };
   } catch {
     return fallback;

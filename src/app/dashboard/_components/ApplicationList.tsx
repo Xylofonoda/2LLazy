@@ -39,11 +39,15 @@ export function ApplicationList({
           <Alert
             severity="info"
             sx={{
-              display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
-              gap: 2,
-              flexWrap: "wrap",
+              "& .MuiAlert-message": {
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexGrow: 1,
+                gap: 2,
+                flexWrap: "wrap",
+              },
             }}
           >
             <span>No tracked applications yet. Add jobs from Favourites to start your pipeline.</span>
