@@ -44,12 +44,16 @@ Expanded description:`;
  *
  * This mirrors what a human does: read the page, pick what matches.
  * One GPT call per listing page — no per-job calls needed at this stage.
+ *
+ * Optional `urlHint`: a regex to pre-filter links by URL pattern (e.g. /\/pozice\//i for Skilleto).
+ * If omitted, a broad heuristic is used to exclude navigation/utility links.
  */
 export async function extractRelevantJobsFromPage(
   query: string,
   skillLevel: string,
   pageText: string,
   links: Array<{ text: string; url: string }>,
+  urlHint?: RegExp,
 ): Promise<Array<{ title: string; url: string }>> {
   if (!OPENAI_API_KEY) return [];
 
@@ -60,13 +64,39 @@ export async function extractRelevantJobsFromPage(
     modelKwargs: { response_format: { type: "json_object" } },
   });
 
-  // Build a numbered list of unique candidate URLs with their link text
-  // Only include links that look like job detail pages (contain common job URL patterns)
-  const jobLinkPattern = /\/(job|it-job|nabidka|position|offer|role)[\/-]/i;
-  const candidates = links
-    .filter((l) => jobLinkPattern.test(l.url))
+  // Known job-detail URL patterns covering all supported sites
+  const KNOWN_JOB_PATTERNS = [
+    /\/(job|it-job|position|offer|role|vacancy)[\/-]/i, // English generic
+    /\/(nabidka|nabidky|pozice)[\/-]/i,                  // Czech (Cocuma, StartupJobs, Skilleto)
+    /\/rpd\//i,                                          // Jobs.cz
+    /\/desc\//i,                                         // Jooble
+    /\/job-listing\//i,                                  // Glassdoor
+  ];
+
+  // Navigation / utility paths to exclude when falling back to heuristic
+  const NAV_PATTERN = /\/(login|signup|register|about|contact|privacy|terms|faq|blog|news|tag|category|search|lang|logout|cookies|gdpr)(\/|$|\?)/i;
+
+  let candidates = links
+    .filter((l) => {
+      // If the caller knows the URL pattern for this site, use it directly
+      if (urlHint) return urlHint.test(l.url);
+      // Otherwise use the broad multi-site pattern list
+      return KNOWN_JOB_PATTERNS.some((p) => p.test(l.url));
+    })
+    .filter((l) => !NAV_PATTERN.test(l.url))
     .filter((l, i, arr) => arr.findIndex((x) => x.url === l.url) === i)
-    .slice(0, 60); // cap to avoid huge prompts
+    .slice(0, 60);
+
+  // Fallback: if URL patterns found nothing, accept any link with meaningful text
+  // that doesn't look like a nav/utility link — let GPT decide what's a job
+  if (candidates.length === 0) {
+    candidates = links
+      .filter((l) => l.text.trim().length > 4)
+      .filter((l) => !NAV_PATTERN.test(l.url))
+      .filter((l) => !/^(https?:\/\/[^/]+)?\/?$/.test(l.url)) // skip bare homepage links
+      .filter((l, i, arr) => arr.findIndex((x) => x.url === l.url) === i)
+      .slice(0, 60);
+  }
 
   if (candidates.length === 0) return [];
 

@@ -2,7 +2,10 @@
  * NoFluffJobs scraper — uses their internal search API (POST).
  * URL: https://nofluffjobs.com/cz/jobs/search?keyword={query}&region=czech-republic
  * The site is a React SPA, so we use their JSON API endpoint instead of HTML scraping.
+ * Job detail pages are fetched via Playwright to get the full description.
  */
+import { pwFetch } from "./playwright-browser";
+import { batchProcess } from "./utils";
 import { ScrapedJob } from "./types";
 import { extractRelevantJobsFromPage } from "@/lib/ai";
 import { Agent } from "undici";
@@ -124,27 +127,45 @@ export async function scrapeNoFluffJobs(
     const relevant = await extractRelevantJobsFromPage(query, skillLevel, "", titleLinks);
     const relevantUrls = new Set(relevant.map((r) => r.url));
 
-    for (const p of postings) {
-      const sourceUrl = `${BASE}/cz/job/${p.url || p.id}`;
-      if (!relevantUrls.has(sourceUrl)) continue;
+    // Build a lookup for API metadata (location, salary, workType)
+    const postingByUrl = new Map(
+      postings.map((p) => [`${BASE}/cz/job/${p.url || p.id}`, p]),
+    );
 
-      const locationParts: string[] = [];
-      if (p.location?.placeEn) locationParts.push(p.location.placeEn);
-      else if (p.location?.place) locationParts.push(p.location.place);
-      const locationStr = locationParts.join(", ") || (p.location?.remote ? "Remote" : "Czech Republic");
-      const workType = p.location?.remote ? "Remote" : undefined;
+    // Fetch full detail pages for each relevant job (SPA — needs Playwright)
+    const batchedJobs = await batchProcess(relevant, 5, async ({ title, url }) => {
+      try {
+        const p = postingByUrl.get(url);
+        const locationParts: string[] = [];
+        if (p?.location?.placeEn) locationParts.push(p.location.placeEn);
+        else if (p?.location?.place) locationParts.push(p.location.place);
+        const locationStr = locationParts.join(", ") || (p?.location?.remote ? "Remote" : "Czech Republic");
+        const workType = p?.location?.remote ? "Remote" : undefined;
 
-      jobs.push({
-        title: p.name || p.title || "",
-        company: p.company?.name ?? "",
-        location: locationStr,
-        description: `${p.name || p.title || ""} — ${p.categoryEn ?? ""} — Technologies: ${(p.technology ?? []).join(", ")}`.slice(0, 4000),
-        sourceUrl,
-        source: "NOFLUFFJOBS" as const,
-        salary: formatNFJSalary(p.salary),
-        workType,
-      });
-    }
+        // Fetch the actual detail page for a rich description
+        const { text: pageText } = await pwFetch(url, "[class*='description'], [class*='job-desc'], main");
+        // Build a rich description — combine page text with API metadata
+        const apiMeta = `${p?.categoryEn ? `Category: ${p.categoryEn}. ` : ""}Technologies: ${(p?.technology ?? []).join(", ")}.`;
+        const richDescription = pageText.length > 300
+          ? pageText.slice(0, 3500)
+          : `${title}. ${apiMeta} ${pageText}`.slice(0, 4000);
+
+        return {
+          title: title,
+          company: p?.company?.name ?? "",
+          location: locationStr,
+          description: richDescription,
+          sourceUrl: url,
+          source: "NOFLUFFJOBS" as const,
+          salary: formatNFJSalary(p?.salary),
+          workType,
+        };
+      } catch {
+        return null;
+      }
+    });
+
+    jobs.push(...batchedJobs);
 
     if (deepSearch) {
       const { prisma } = await import("@/lib/prisma");

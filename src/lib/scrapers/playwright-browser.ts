@@ -73,7 +73,10 @@ export async function pwFetch(
   url: string,
   waitSelector?: string,
 ): Promise<{ text: string; links: Array<{ text: string; url: string }> }> {
-  if (!ENABLED) {
+  // Read env var dynamically so a server restart isn't needed after adding it to .env.local
+  const enabled = process.env.PLAYWRIGHT_ENABLED === "true";
+  if (!enabled) {
+    console.warn(`[pwFetch] PLAYWRIGHT_ENABLED is not set — falling back to rawFetch for ${url}. SPA sites will return empty results.`);
     const { rawFetch } = await import("./fetcher");
     return rawFetch(url);
   }
@@ -140,5 +143,5 @@ export async function pwFetch(
 
 /** True if Playwright is enabled and likely available. */
 export function isPlaywrightEnabled(): boolean {
-  return ENABLED;
+  return process.env.PLAYWRIGHT_ENABLED === "true";
 }
