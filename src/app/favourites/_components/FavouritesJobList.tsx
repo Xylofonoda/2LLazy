@@ -9,7 +9,6 @@ interface Props {
   togglingId: string | null;
   onApply: (job: JobItem) => void;
   onToggleFavourite: (job: JobItem) => void;
-  onViewCoverLetter: (coverLetter: { id: string; content: string }, jobTitle: string) => void;
 }
 
 export function FavouritesJobList({
@@ -18,7 +17,6 @@ export function FavouritesJobList({
   togglingId,
   onApply,
   onToggleFavourite,
-  onViewCoverLetter,
 }: Props) {
   if (jobs.length === 0) {
     return (
@@ -52,7 +50,6 @@ export function FavouritesJobList({
           isToggling={togglingId === job.id}
           onApply={onApply}
           onToggleFavourite={onToggleFavourite}
-          onViewCoverLetter={(coverLetter) => onViewCoverLetter(coverLetter, job.title)}
         />
       ))}
     </Stack>

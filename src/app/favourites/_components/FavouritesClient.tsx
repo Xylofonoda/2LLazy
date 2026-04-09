@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Typography } from "@mui/material";
 import { JobFilterBar, type JobFilters } from "@/components/jobs/JobFilterBar";
-import { CoverLetterDialog } from "@/components/dialogs/CoverLetterDialog";
 import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
 import { toggleFavourite, trackJob } from "@/lib/actions/jobActions";
 import { FavouritesJobList } from "./FavouritesJobList";
@@ -23,13 +22,7 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
-  const [deletedCoverLetterIds, setDeletedCoverLetterIds] = useState<Set<string>>(new Set());
-  const [clDialog, setClDialog] = useState<{ open: boolean; content: string; jobTitle: string; coverId: string | null }>({
-    open: false,
-    content: "",
-    jobTitle: "",
-    coverId: null,
-  });
+
   const handleFilterChange = (newFilters: JobFilters) => {
     const params = new URLSearchParams();
     if (newFilters.source !== "ALL") params.set("source", newFilters.source);
@@ -86,42 +79,12 @@ export function FavouritesClient({ jobs, filters, sources }: Props) {
       <JobFilterBar sources={sources} filters={filters} onChange={handleFilterChange} />
 
       <FavouritesJobList
-        jobs={jobs.map((j) =>
-          j.coverLetter && deletedCoverLetterIds.has(j.coverLetter.id)
-            ? { ...j, coverLetter: null }
-            : j
-        )}
+        jobs={jobs}
         applyingId={trackingId}
         togglingId={togglingId}
         onApply={handleTrack}
         onToggleFavourite={handleToggle}
-        onViewCoverLetter={(coverLetter, jobTitle) =>
-          setClDialog({ open: true, content: coverLetter.content, jobTitle, coverId: coverLetter.id })
-        }
       />
-
-      <CoverLetterDialog
-        open={clDialog.open}
-        content={clDialog.content}
-        filenameStem={`cover-letter-${clDialog.jobTitle.toLowerCase().replace(/\s+/g, "-")}`}
-        onClose={() => setClDialog({ open: false, content: "", jobTitle: "", coverId: null })}
-        onDelete={clDialog.coverId ? async () => {
-          const idToDelete = clDialog.coverId!;
-          // Immediately remove from UI before waiting for server
-          setDeletedCoverLetterIds((prev) => new Set(prev).add(idToDelete));
-          setClDialog({ open: false, content: "", jobTitle: "", coverId: null });
-          await fetch("/api/graphql", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              query: `mutation Del($id: ID!) { deleteCoverLetter(id: $id) }`,
-              variables: { id: idToDelete },
-            }),
-          });
-          router.refresh();
-        } : undefined}
-      />
-
     </Box>
   );
 }

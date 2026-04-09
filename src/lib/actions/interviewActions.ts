@@ -71,3 +71,4 @@ export async function deleteCalendarEvent(id: string): Promise<void> {
   updateTag(INTERVIEWS_TAG);
   revalidatePath("/interviews");
 }
+

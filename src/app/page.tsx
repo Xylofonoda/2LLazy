@@ -20,6 +20,7 @@ import {
   FormControlLabel,
   Tooltip,
   Alert,
+  CircularProgress,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { JobCard } from "@/components/jobs/JobCard";
@@ -106,7 +107,7 @@ export default function SearchPage() {
         JSON.stringify({ ...parsed, skillLevel, deepSearch, progress, errors }),
       );
     } catch { /* storage quota exceeded */ }
-  }, [skillLevel, progress, errors, scraping]);
+  }, [skillLevel, deepSearch, progress, errors, scraping]);
 
   const handleSearch = async () => {
     const q = queryInputRef.current?.value.trim() ?? "";
@@ -253,24 +254,28 @@ export default function SearchPage() {
       <GlobalStyles
         styles={{
           "@keyframes jobSlideIn": {
-            from: { opacity: 0, transform: "translateY(18px)" },
-            to: { opacity: 1, transform: "translateY(0)" },
+            from: { opacity: 0, transform: "translateY(14px) scale(0.99)" },
+            to:   { opacity: 1, transform: "translateY(0) scale(1)" },
           },
         }}
       />
-      <Typography variant="h4" gutterBottom>
-        Find Jobs
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Enter a role and skill level. Results are focused on Czechia and ranked
-        by semantic similarity.
-      </Typography>
 
+      {/* ── Page header ──────────────────────────────────────────────── */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" sx={{ mb: 0.5 }}>
+          Find Jobs
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Enter a role and skill level — results ranked by semantic match.
+        </Typography>
+      </Box>
+
+      {/* ── Search card ──────────────────────────────────────────────── */}
       <Card sx={{ mb: 3 }}>
-        <CardContent>
+        <CardContent sx={{ pb: "16px !important" }}>
           <Stack
             direction={{ xs: "column", sm: "row" }}
-            spacing={2}
+            spacing={1.5}
             alignItems="flex-end"
           >
             <TextField
@@ -278,14 +283,12 @@ export default function SearchPage() {
               placeholder="e.g. Frontend Developer, Data Engineer"
               inputRef={queryInputRef}
               defaultValue=""
-              onKeyDown={(e) =>
-                e.key === "Enter" && !scraping && handleSearch()
-              }
+              onKeyDown={(e) => e.key === "Enter" && !scraping && handleSearch()}
               fullWidth
               variant="outlined"
               size="small"
             />
-            <FormControl size="small" sx={{ minWidth: 130 }}>
+            <FormControl size="small" sx={{ minWidth: 130, flexShrink: 0 }}>
               <InputLabel>Skill Level</InputLabel>
               <Select
                 value={skillLevel}
@@ -293,33 +296,24 @@ export default function SearchPage() {
                 onChange={(e) => setSkillLevel(e.target.value)}
               >
                 {SKILL_LEVELS.map((l) => (
-                  <MenuItem key={l} value={l}>
-                    {l}
-                  </MenuItem>
+                  <MenuItem key={l} value={l}>{l}</MenuItem>
                 ))}
               </Select>
             </FormControl>
             <Button
               variant="contained"
-              startIcon={<SearchIcon />}
+              startIcon={scraping ? <CircularProgress size={15} color="inherit" /> : <SearchIcon />}
               onClick={handleSearch}
               disabled={scraping}
-              sx={{ minWidth: 120, height: 40 }}
+              sx={{ minWidth: 120, height: 40, flexShrink: 0 }}
             >
-              {scraping ? "Searching..." : "Search"}
+              {scraping ? "Searching…" : "Search"}
             </Button>
           </Stack>
+
           {scraping && <LinearProgress sx={{ mt: 2 }} />}
-          {progress && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ mt: 1, display: "block" }}
-            >
-              {progress}
-            </Typography>
-          )}
-          <Box sx={{ mt: 1 }}>
+
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1.5 }}>
             <Tooltip title="Scrapes multiple pages per site — slower but finds more results.">
               <FormControlLabel
                 control={
@@ -335,9 +329,15 @@ export default function SearchPage() {
                     Deep Search
                   </Typography>
                 }
+                sx={{ ml: 0 }}
               />
             </Tooltip>
-          </Box>
+            {progress && (
+              <Typography variant="caption" color="text.secondary">
+                {progress}
+              </Typography>
+            )}
+          </Stack>
         </CardContent>
       </Card>
 
@@ -354,14 +354,14 @@ export default function SearchPage() {
 
       {!scraping && jobs.length === 0 && progress?.startsWith("Done") && (
         <Alert severity="warning" sx={{ mb: 3 }}>
-          No jobs found for this search yet. Try broader keywords, set skill level to <strong>Any</strong>, or enable <strong>Deep Search</strong>.
+          No jobs found. Try broader keywords, set skill level to <strong>Any</strong>, or enable <strong>Deep Search</strong>.
         </Alert>
       )}
 
       {jobs.length > 0 && (
         <>
           <JobFilterBar sources={Array.from(new Set(jobs.map((j) => j.source))).sort()} filters={filters} onChange={setFilters} />
-          <Typography variant="h6" sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontWeight: 500 }}>
             {filteredJobs.length === jobs.length
               ? `${jobs.length} results`
               : `${filteredJobs.length} of ${jobs.length} results`}
@@ -370,24 +370,24 @@ export default function SearchPage() {
       )}
 
       {scraping && jobs.length === 0 && (
-        <Stack spacing={2} sx={{ mt: 2 }}>
+        <Stack spacing={2} sx={{ mt: 1 }}>
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} variant="rectangular" height={180} sx={{ borderRadius: 1 }} />
+            <Skeleton key={i} variant="rectangular" height={160} sx={{ borderRadius: 2 }} />
           ))}
         </Stack>
       )}
 
-      <Stack spacing={2}>
+      <Stack spacing={1.5}>
         {filteredJobs.map((job) => {
           const isNew = newJobIdsRef.current.has(job.id);
           const delay = isNew
-            ? Math.min((jobArrivalIndexRef.current.get(job.id) ?? 0) * 55, 900)
+            ? Math.min((jobArrivalIndexRef.current.get(job.id) ?? 0) * 50, 800)
             : 0;
           return (
             <Box
               key={job.id}
               sx={isNew ? {
-                animation: "jobSlideIn 0.42s ease-out both",
+                animation: "jobSlideIn 0.38s cubic-bezier(0.34,1.2,0.64,1) both",
                 animationDelay: `${delay}ms`,
               } : undefined}
             >
@@ -400,8 +400,6 @@ export default function SearchPage() {
           );
         })}
       </Stack>
-
-
     </Box>
   );
 }

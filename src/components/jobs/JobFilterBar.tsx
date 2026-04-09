@@ -11,6 +11,7 @@ import {
   Stack,
   Switch,
   TextField,
+  Typography,
 } from "@mui/material";
 
 export interface JobFilters {
@@ -43,13 +44,12 @@ export function JobFilterBar({ sources, filters, onChange }: JobFilterBarProps) 
   const allSources = ["ALL", ...sources];
 
   return (
-    <Box sx={{ mb: 3 }}>
+    <Box sx={{ mb: 2.5 }}>
       <Stack
         direction="row"
-        spacing={2}
+        spacing={1.5}
         sx={{ flexWrap: "wrap", alignItems: "center" }}
       >
-        {/* Position / company text search */}
         <TextField
           label="Position / Company"
           size="small"
@@ -61,8 +61,7 @@ export function JobFilterBar({ sources, filters, onChange }: JobFilterBarProps) 
           placeholder="Search title or company…"
         />
 
-        {/* Source site */}
-        <FormControl size="small" sx={{ minWidth: 150 }}>
+        <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel id="job-filter-source-label">Site</InputLabel>
           <Select
             labelId="job-filter-source-label"
@@ -78,7 +77,6 @@ export function JobFilterBar({ sources, filters, onChange }: JobFilterBarProps) 
           </Select>
         </FormControl>
 
-        {/* Has salary toggle */}
         <FormControlLabel
           control={
             <Switch
@@ -87,7 +85,7 @@ export function JobFilterBar({ sources, filters, onChange }: JobFilterBarProps) 
               onChange={(e) => set("hasSalary", e.target.checked)}
             />
           }
-          label="Has Salary"
+          label={<Typography variant="body2" color="text.secondary">Has Salary</Typography>}
           sx={{ ml: 0 }}
         />
       </Stack>

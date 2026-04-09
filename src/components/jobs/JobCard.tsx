@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -8,11 +9,11 @@ import {
   Stack,
   Box,
   Typography,
-  Divider,
   IconButton,
   Button,
   Tooltip,
   CircularProgress,
+  alpha,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
@@ -20,10 +21,10 @@ import BookmarkIcon from "@mui/icons-material/Bookmark";
 import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
 import type { JobItem } from "@/types";
 import { SOURCE_COLOR } from "@/types";
+import { ios } from "@/theme/theme";
 
 interface JobCardProps {
   job: JobItem;
-  /** "search" (default) shows an Interested/Saved CTA. "favourites" shows Send to Dashboard. */
   variant?: "search" | "favourites";
   isApplying?: boolean;
   isToggling?: boolean;
@@ -32,13 +33,6 @@ interface JobCardProps {
   onViewCoverLetter?: (coverLetter: { id: string; content: string }) => void;
 }
 
-/**
- * Reusable job listing card.
- * Used on the Search page and Favourites page.
- *
- * The optional `similarity` field renders a match-percentage chip.
- * The `favourited` field controls the bookmark icon fill/colour.
- */
 export function JobCard({
   job,
   variant = "search",
@@ -48,25 +42,75 @@ export function JobCard({
   onToggleFavourite,
   onViewCoverLetter,
 }: JobCardProps) {
+  const matchPct = job.similarity != null ? Math.round(job.similarity * 100) : null;
+  const [expanded, setExpanded] = useState(false);
+  const longDesc = (job.description?.length ?? 0) > 200;
+
   return (
     <Card>
-      <CardContent sx={{ pb: 1 }}>
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="flex-start"
-        >
-          <Box>
-            <Typography variant="h6" sx={{ fontSize: 16 }}>
+      <CardContent sx={{ pb: 1.5 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1.5}>
+          <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontSize: 15,
+                fontWeight: 600,
+                letterSpacing: "-0.01em",
+                lineHeight: 1.35,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {job.title}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {job.company} · {job.location}
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+              {job.company}
+              {job.location ? (
+                <Box component="span" sx={{ color: ios.label3, mx: 0.5 }}>·</Box>
+              ) : null}
+              {job.location}
             </Typography>
           </Box>
-          <Stack direction="row" spacing={0.5} alignItems="center">
+
+          {/* Badges */}
+          <Stack direction="row" spacing={0.75} alignItems="center" flexShrink={0}>
+            {matchPct !== null && matchPct > 0 && (
+              <Chip
+                label={`${matchPct}%`}
+                size="small"
+                sx={{
+                  background: matchPct >= 80
+                    ? alpha(ios.green, 0.18)
+                    : matchPct >= 60
+                      ? alpha(ios.orange, 0.18)
+                      : alpha(ios.label2, 0.1),
+                  color: matchPct >= 80
+                    ? ios.green
+                    : matchPct >= 60
+                      ? ios.orange
+                      : ios.label2,
+                  border: `1px solid ${
+                    matchPct >= 80
+                      ? alpha(ios.green, 0.3)
+                      : matchPct >= 60
+                        ? alpha(ios.orange, 0.3)
+                        : "rgba(255,255,255,0.12)"
+                  }`,
+                  fontWeight: 700,
+                  fontSize: "0.7rem",
+                  height: 22,
+                }}
+              />
+            )}
             {job.isNew && (
-              <Chip label="NEW" size="small" color="success" variant="outlined" />
+              <Chip
+                label="NEW"
+                size="small"
+                color="success"
+                variant="outlined"
+              />
             )}
             <Chip
               label={job.source}
@@ -78,30 +122,54 @@ export function JobCard({
         </Stack>
 
         {job.salary && (
-          <Typography variant="body2" color="success.main" sx={{ mt: 0.5 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              mt: 1,
+              color: ios.green,
+              fontWeight: 600,
+              fontSize: "0.8125rem",
+            }}
+          >
             {job.salary}
           </Typography>
         )}
 
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{
-            mt: 1,
-            display: "-webkit-box",
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {job.description || "No description available."}
-        </Typography>
+        <Box onClick={() => longDesc && setExpanded((v) => !v)} sx={longDesc ? { cursor: "pointer" } : undefined}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{
+              mt: 1.25,
+              ...(!expanded && {
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }),
+              lineHeight: 1.55,
+              fontSize: "0.8125rem",
+              color: ios.label2,
+            }}
+          >
+            {job.description || "No description available."}
+          </Typography>
+          {longDesc && (
+            <Typography
+              variant="caption"
+              sx={{ color: ios.blue, mt: 0.5, display: "block", userSelect: "none" }}
+            >
+              {expanded ? "Show less" : "Show more"}
+            </Typography>
+          )}
+        </Box>
       </CardContent>
 
-      <Divider />
+      {/* Separator */}
+      <Box sx={{ mx: 2, height: "1px", background: ios.separator }} />
 
-      <CardActions sx={{ px: 2, py: 1 }}>
+      <CardActions sx={{ px: 2, py: 1.25, gap: 0.75 }}>
         {variant === "search" ? (
           <Button
             size="small"
@@ -109,50 +177,53 @@ export function JobCard({
             color={job.favourited ? "success" : "primary"}
             startIcon={
               isToggling ? (
-                <CircularProgress size={14} />
+                <CircularProgress size={13} color="inherit" />
               ) : job.favourited ? (
-                <BookmarkIcon />
+                <BookmarkIcon fontSize="small" />
               ) : (
-                <BookmarkBorderIcon />
+                <BookmarkBorderIcon fontSize="small" />
               )
             }
             onClick={() => onToggleFavourite(job)}
             disabled={isToggling}
+            sx={{
+              ...(job.favourited && {
+                background: alpha(ios.green, 0.18),
+                color: ios.green,
+                borderColor: alpha(ios.green, 0.3),
+                "&:hover": {
+                  background: alpha(ios.green, 0.25),
+                },
+              }),
+            }}
           >
-            {job.favourited ? "Saved" : "Interested"}
+            {job.favourited ? "Saved" : "Save"}
           </Button>
         ) : (
           <>
             <Button
               size="small"
               variant="contained"
-              startIcon={<SendIcon />}
+              startIcon={isApplying ? <CircularProgress size={13} color="inherit" /> : <SendIcon fontSize="small" />}
               onClick={() => onApply?.(job)}
               disabled={isApplying}
             >
-              {isApplying ? "Tracking..." : "Track Application"}
+              {isApplying ? "Tracking…" : "Track"}
             </Button>
 
-            {job.coverLetter && onViewCoverLetter && (
-              <Button
-                size="small"
-                variant="outlined"
-                color="secondary"
-                onClick={() => onViewCoverLetter(job.coverLetter!)}
-              >
-                Cover Letter
-              </Button>
-            )}
-
-            <Tooltip title="Remove from favourites">
+            <Tooltip title="Remove from saved">
               <IconButton
                 size="small"
                 onClick={() => onToggleFavourite(job)}
                 disabled={isToggling}
-                sx={{ ml: "auto", color: "warning.main" }}
+                sx={{
+                  ml: "auto",
+                  color: ios.orange,
+                  "&:hover": { background: alpha(ios.orange, 0.1) },
+                }}
               >
                 {isToggling ? (
-                  <CircularProgress size={16} />
+                  <CircularProgress size={15} />
                 ) : (
                   <BookmarkIcon fontSize="small" />
                 )}
@@ -168,6 +239,7 @@ export function JobCard({
             href={job.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
+            sx={{ color: ios.label2, "&:hover": { color: "#fff" } }}
           >
             <OpenInNewIcon fontSize="small" />
           </IconButton>

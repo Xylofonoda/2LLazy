@@ -30,3 +30,4 @@ export async function trackJob(jobId: string): Promise<void> {
   revalidatePath("/dashboard");
   revalidatePath("/");
 }
+

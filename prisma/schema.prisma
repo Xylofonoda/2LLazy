@@ -2,11 +2,13 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
 }
 
 enum JobSource {
@@ -20,6 +22,7 @@ enum ApplicationStatus {
   APPLIED
   REJECTED
   INTERVIEW
+  OFFER
   FAILED
 }
 
@@ -37,19 +40,19 @@ model UserProfile {
 }
 
 model JobPosting {
-  id           String        @id @default(cuid())
+  id           String                        @id @default(cuid())
   title        String
   company      String
   location     String?
-  description  String        @db.Text
-  sourceUrl    String        @unique
+  description  String                        @db.Text
+  sourceUrl    String                        @unique
   source       JobSource
   salary       String?
   postedAt     DateTime?
-  scrapedAt    DateTime      @default(now())
-  firstSeenAt  DateTime      @default(now())
-  embedding    Json?
-  favourited   Boolean       @default(false)
+  scrapedAt    DateTime                      @default(now())
+  firstSeenAt  DateTime                      @default(now())
+  embedding    Unsupported("vector(1536)")?
+  favourited   Boolean                       @default(false)
   applications Application[]
   coverLetters CoverLetter[]
 }
@@ -61,6 +64,7 @@ model Application {
   status        ApplicationStatus @default(PENDING)
   appliedAt     DateTime?
   errorMessage  String?           @db.Text
+  notes         String?           @db.Text
   coverLetterId String?
   coverLetter   CoverLetter?      @relation(fields: [coverLetterId], references: [id])
   interview     Interview?

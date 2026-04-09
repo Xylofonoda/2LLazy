@@ -11,13 +11,20 @@ import {
   Button,
   IconButton,
   Tooltip,
+  alpha,
+  TextField,
+  Collapse,
 } from "@mui/material";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import EditIcon from "@mui/icons-material/Edit";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import NotesIcon from "@mui/icons-material/Notes";
 import type { Application, AppStatus } from "@/types";
 import { STATUS_COLOR, SOURCE_COLOR } from "@/types";
 import { CvAdjustDialog } from "@/components/dialogs/CvAdjustDialog";
+import { updateApplicationNotes } from "@/lib/actions/applicationActions";
+import { ios } from "@/theme/theme";
 
 interface ApplicationCardProps {
   application: Application;
@@ -26,7 +33,6 @@ interface ApplicationCardProps {
   onGenerateCoverLetter: (jobId: string, jobTitle: string) => void;
 }
 
-/** Single application row card for the Dashboard page. */
 export function ApplicationCard({
   application: app,
   onStatusClick,
@@ -34,87 +40,157 @@ export function ApplicationCard({
   onGenerateCoverLetter,
 }: ApplicationCardProps) {
   const [cvAdjustOpen, setCvAdjustOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notes, setNotes] = useState(app.notes ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const handleSaveNotes = async () => {
+    setSaving(true);
+    try {
+      await updateApplicationNotes(app.id, notes);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
       <Card>
-        <CardContent>
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="flex-start"
-          >
-            <Box>
-              <Typography variant="h6" sx={{ fontSize: 15 }}>
+        <CardContent sx={{ pb: 1.5 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1.5}>
+            <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+              <Typography
+                variant="h6"
+                sx={{
+                  fontSize: 15,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  lineHeight: 1.35,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {app.job.title}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {app.job.company} · {app.job.location}
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                {app.job.company}
+                {app.job.location && (
+                  <Box component="span" sx={{ color: ios.label3, mx: 0.5 }}>·</Box>
+                )}
+                {app.job.location}
               </Typography>
               {app.appliedAt && (
-                <Typography variant="caption" color="text.secondary">
-                  Applied: {new Date(app.appliedAt).toLocaleDateString()}
+                <Typography variant="caption" sx={{ color: ios.label3, display: "block", mt: 0.5 }}>
+                  Applied {new Date(app.appliedAt).toLocaleDateString("en-GB", {
+                    day: "numeric", month: "short", year: "numeric",
+                  })}
                 </Typography>
               )}
             </Box>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Chip
-                label={app.status}
-                size="small"
-                color={STATUS_COLOR[app.status]}
-              />
-              <Chip
-                label={app.job.source}
-                size="small"
-                color={SOURCE_COLOR[app.job.source] ?? "default"}
-                variant="filled"
-              />
+
+            <Stack direction="row" spacing={0.75} alignItems="center" flexShrink={0}>
+              <Chip label={app.status} size="small" color={STATUS_COLOR[app.status]} />
+              <Chip label={app.job.source} size="small" color={SOURCE_COLOR[app.job.source] ?? "default"} variant="filled" />
             </Stack>
           </Stack>
 
           {app.job.description && (
             <Typography
               variant="body2"
-              color="text.secondary"
               sx={{
-                mt: 1,
+                mt: 1.25,
                 display: "-webkit-box",
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
+                lineHeight: 1.55,
+                fontSize: "0.8125rem",
+                color: ios.label2,
               }}
             >
               {app.job.description}
             </Typography>
           )}
 
+          {/* Notes preview when panel is closed */}
+          {!notesOpen && notes && (
+            <Typography
+              variant="caption"
+              sx={{
+                mt: 1,
+                display: "block",
+                color: ios.label3,
+                fontStyle: "italic",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              📝 {notes}
+            </Typography>
+          )}
+
+          {/* Notes collapsible panel */}
+          <Collapse in={notesOpen}>
+            <Box sx={{ mt: 1.5 }}>
+              <TextField
+                multiline
+                minRows={2}
+                maxRows={5}
+                fullWidth
+                size="small"
+                placeholder="Add notes about this application…"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+              <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1 }}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={handleSaveNotes}
+                  disabled={saving}
+                >
+                  {saving ? "Saving…" : "Save"}
+                </Button>
+              </Stack>
+            </Box>
+          </Collapse>
+
           {app.interview && (
             <Box
               sx={{
-                mt: 1,
-                p: 1,
-                bgcolor: "success.main",
-                borderRadius: 1,
-                opacity: 0.85,
+                mt: 1.5,
+                p: 1.25,
+                background: alpha(ios.green, 0.12),
+                border: `1px solid ${alpha(ios.green, 0.25)}`,
+                borderRadius: "10px",
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
               }}
             >
-              <Typography variant="caption" color="#fff">
-                📅 Interview:{" "}
-                {new Date(app.interview.scheduledAt).toLocaleString()} (
-                {app.interview.durationMinutes} min)
+              <CalendarMonthIcon sx={{ fontSize: 14, color: ios.green, flexShrink: 0 }} />
+              <Typography variant="caption" sx={{ color: ios.green, fontWeight: 500, lineHeight: 1.4 }}>
+                Interview: {new Date(app.interview.scheduledAt).toLocaleString("en-GB", {
+                  day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                })} · {app.interview.durationMinutes} min
                 {app.interview.notes ? ` — ${app.interview.notes}` : ""}
               </Typography>
             </Box>
           )}
         </CardContent>
 
-        <Stack direction="row" spacing={1} sx={{ px: 2, pb: 2 }}>
+        {/* Separator */}
+        <Box sx={{ mx: 2, height: "1px", background: ios.separator }} />
+
+        <Stack direction="row" spacing={0.75} sx={{ px: 2, py: 1.25, flexWrap: "wrap" }}>
           <Tooltip title="Change status">
             <Button
               size="small"
               variant="outlined"
-              startIcon={<EditIcon />}
+              startIcon={<EditIcon fontSize="small" />}
               onClick={() => onStatusClick(app.id, app.status)}
             >
               Status
@@ -126,33 +202,48 @@ export function ApplicationCard({
               size="small"
               variant="outlined"
               color="secondary"
-              startIcon={<AutoAwesomeIcon />}
+              startIcon={<AutoAwesomeIcon fontSize="small" />}
               onClick={() => setCvAdjustOpen(true)}
             >
               Adjust CV
             </Button>
           </Tooltip>
 
-          {app.coverLetter && (
+          {app.coverLetter ? (
             <Button
               size="small"
               variant="outlined"
               onClick={() => onViewCoverLetter(app.coverLetter!.content, app.coverLetter!.id)}
             >
-              View Cover Letter
+              Cover Letter
             </Button>
-          )}
-
-          {!app.coverLetter && (
+          ) : (
             <Button
               size="small"
               variant="outlined"
-              startIcon={<AutoAwesomeIcon />}
+              startIcon={<AutoAwesomeIcon fontSize="small" />}
               onClick={() => onGenerateCoverLetter(app.job.id, app.job.title)}
             >
-              Gen Cover Letter
+              Generate
             </Button>
           )}
+
+          <Tooltip title={notesOpen ? "Close notes" : "Add/view notes"}>
+            <Button
+              size="small"
+              variant={notesOpen ? "contained" : "outlined"}
+              startIcon={<NotesIcon fontSize="small" />}
+              onClick={() => setNotesOpen((v) => !v)}
+              sx={notesOpen ? {
+                background: alpha(ios.indigo, 0.25),
+                color: ios.indigo,
+                borderColor: alpha(ios.indigo, 0.4),
+                "&:hover": { background: alpha(ios.indigo, 0.35) },
+              } : undefined}
+            >
+              Notes
+            </Button>
+          </Tooltip>
 
           <Tooltip title="Open job posting">
             <IconButton
@@ -161,6 +252,7 @@ export function ApplicationCard({
               href={app.job.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
+              sx={{ ml: "auto", color: ios.label2, "&:hover": { color: "#fff" } }}
             >
               <OpenInNewIcon fontSize="small" />
             </IconButton>

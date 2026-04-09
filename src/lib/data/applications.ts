@@ -49,6 +49,7 @@ async function _getApplications(filters?: ApplicationFilters): Promise<Applicati
     status: app.status as AppStatus,
     appliedAt: app.appliedAt?.toISOString() ?? null,
     errorMessage: app.errorMessage,
+    notes: app.notes ?? null,
     job: {
       id: app.job.id,
       title: app.job.title,

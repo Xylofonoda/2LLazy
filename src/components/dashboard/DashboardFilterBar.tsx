@@ -12,6 +12,7 @@ import {
   Stack,
   Switch,
   TextField,
+  Typography,
 } from "@mui/material";
 import type { AppStatus } from "@/types";
 import { ALL_STATUSES, STATUS_COLOR } from "@/types";
@@ -52,16 +53,23 @@ export function DashboardFilterBar({
   return (
     <Box sx={{ mb: 3 }}>
       {/* ── Status chips ── */}
-      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap", gap: 1 }}>
+      <Stack direction="row" spacing={0.75} sx={{ mb: 2, flexWrap: "wrap", gap: 0.75 }}>
         <Chip
-          label={`ALL: ${totalCount}`}
+          label={`All  ${totalCount}`}
           variant={filters.status === "ALL" ? "filled" : "outlined"}
           onClick={() => set("status", "ALL")}
+          sx={{
+            ...(filters.status === "ALL" && {
+              background: "rgba(255,255,255,0.15)",
+              color: "#fff",
+              borderColor: "rgba(255,255,255,0.25)",
+            }),
+          }}
         />
         {ALL_STATUSES.map((s: AppStatus) => (
           <Chip
             key={s}
-            label={`${s}: ${statusCounts[s] ?? 0}`}
+            label={`${s}  ${statusCounts[s] ?? 0}`}
             color={STATUS_COLOR[s]}
             variant={filters.status === s ? "filled" : "outlined"}
             onClick={() => set("status", s)}
@@ -72,10 +80,9 @@ export function DashboardFilterBar({
       {/* ── Secondary filters ── */}
       <Stack
         direction="row"
-        spacing={2}
+        spacing={1.5}
         sx={{ flexWrap: "wrap", alignItems: "center" }}
       >
-        {/* Position text search */}
         <TextField
           label="Position / Company"
           size="small"
@@ -87,8 +94,7 @@ export function DashboardFilterBar({
           placeholder="Search title or company…"
         />
 
-        {/* Source */}
-        <FormControl size="small" sx={{ minWidth: 150 }}>
+        <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel id="filter-source-label">Site</InputLabel>
           <Select
             labelId="filter-source-label"
@@ -104,7 +110,6 @@ export function DashboardFilterBar({
           </Select>
         </FormControl>
 
-        {/* Has salary toggle */}
         <FormControlLabel
           control={
             <Switch
@@ -113,7 +118,7 @@ export function DashboardFilterBar({
               onChange={(e) => set("hasSalary", e.target.checked)}
             />
           }
-          label="Has Salary"
+          label={<Typography variant="body2" color="text.secondary">Has Salary</Typography>}
           sx={{ ml: 0 }}
         />
       </Stack>

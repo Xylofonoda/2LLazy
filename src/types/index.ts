@@ -3,13 +3,14 @@
  * Keep separate from src/lib/scrapers/types.ts (backend scraper types).
  */
 
-export type AppStatus = "PENDING" | "APPLIED" | "REJECTED" | "INTERVIEW" | "FAILED";
+export type AppStatus = "PENDING" | "APPLIED" | "REJECTED" | "INTERVIEW" | "OFFER" | "FAILED";
 
 export const ALL_STATUSES: AppStatus[] = [
   "PENDING",
   "APPLIED",
   "REJECTED",
   "INTERVIEW",
+  "OFFER",
   "FAILED",
 ];
 
@@ -21,6 +22,7 @@ export const STATUS_COLOR: Record<
   APPLIED: "info",
   REJECTED: "error",
   INTERVIEW: "success",
+  OFFER: "success",
   FAILED: "warning",
 };
 
@@ -70,6 +72,7 @@ export interface Application {
   status: AppStatus;
   appliedAt: string | null;
   errorMessage: string | null;
+  notes?: string | null;
   job: {
     id: string;
     title: string;

@@ -63,9 +63,14 @@ export function DashboardClient({ applications, filters, sources, statusCounts }
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Application Dashboard
-      </Typography>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" sx={{ mb: 0.5 }}>
+          Applications
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Track and manage all your job applications in one place.
+        </Typography>
+      </Box>
 
       {errorMsg && (
         <Alert severity="error" onClose={() => setErrorMsg(null)} sx={{ mb: 2 }}>

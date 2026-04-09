@@ -10,6 +10,10 @@ import { cosineSimilarity } from "@/lib/similarity";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+// Simple in-memory rate limiter (per-IP, resets on server restart)
+const rateMap = new Map<string, number>();
+const RATE_LIMIT_MS = 10_000; // 10 seconds between requests per IP
+
 /** Remove repeated-half duplicates like "React Native DeveloperReact Native Developer" */
 function dedupe(text: string | null | undefined): string {
   if (!text) return text ?? "";
@@ -32,6 +36,14 @@ function sseChunk(event: SSEEvent): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limiting
+  const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "unknown";
+  const last = rateMap.get(ip) ?? 0;
+  if (Date.now() - last < RATE_LIMIT_MS) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), { status: 429 });
+  }
+  rateMap.set(ip, Date.now());
+
   const body = await req.json().catch(() => ({}));
   const query: string = body.query ?? "";
   const skillLevel: string = body.skillLevel ?? "";
@@ -75,16 +87,28 @@ export async function POST(req: NextRequest) {
           try {
             const jobs = await scraper.fn();
 
-            // Pre-fetch existing DB records so we can skip re-embedding jobs seen < 24h ago
+            // Pre-fetch existing DB records using raw SQL (embedding is Unsupported type)
             const sourceUrls = jobs.map((j) => j.sourceUrl);
-            const existingRecords = await prisma.jobPosting.findMany({
-              where: { sourceUrl: { in: sourceUrls } },
-              select: { id: true, sourceUrl: true, embedding: true, scrapedAt: true, favourited: true, firstSeenAt: true },
-            });
+            const existingRecords = await prisma.$queryRaw<Array<{
+              id: string;
+              sourceUrl: string;
+              embedding: string | null;
+              scrapedAt: Date;
+              favourited: boolean;
+              firstSeenAt: Date | null;
+            }>>`
+              SELECT id, "sourceUrl", embedding::text as embedding, "scrapedAt", "favourited", "firstSeenAt"
+              FROM "JobPosting"
+              WHERE "sourceUrl" = ANY(${sourceUrls})
+            `;
+
             type ExistingRecord = { id: string; sourceUrl: string; embedding: number[] | null; scrapedAt: Date; favourited: boolean; firstSeenAt: Date | null };
             const existingMap = new Map<string, ExistingRecord>();
             for (const r of existingRecords) {
-              existingMap.set(r.sourceUrl, r as ExistingRecord);
+              existingMap.set(r.sourceUrl, {
+                ...r,
+                embedding: r.embedding ? JSON.parse(r.embedding) : null,
+              } as ExistingRecord);
             }
 
             // Embed + save + emit in batches of 5; emit each job immediately (no post-sort)
@@ -101,7 +125,6 @@ export async function POST(req: NextRequest) {
                       : Infinity;
 
                     // Dimension mismatch means the embedding was from a different provider
-                    // (e.g., Ollama 768-dim vs OpenAI 1536-dim). Force re-embed in that case.
                     const storedEmbedding = existing?.embedding as number[] | null | undefined;
                     const dimensionMatch =
                       storedEmbedding && storedEmbedding.length === queryEmbedding.length;
@@ -121,26 +144,17 @@ export async function POST(req: NextRequest) {
                     const embeddingText = `${job.title}\n${job.title}\n${job.description.slice(0, 1200)}`;
                     const embedding = await generateEmbedding(embeddingText);
 
-                    const saved = await prisma.jobPosting.upsert({
-                      where: { sourceUrl: job.sourceUrl },
-                      create: {
-                        title: job.title,
-                        company: job.company,
-                        location: job.location ?? "Remote",
-                        description: job.description,
-                        sourceUrl: job.sourceUrl,
-                        source: job.source,
-                        salary: job.salary ?? null,
-                        postedAt: job.postedAt ?? null,
-                        embedding,
-                      },
-                      update: {
-                        title: job.title,
-                        description: job.description,
-                        scrapedAt: new Date(),
-                        embedding,
-                      },
-                    });
+                    const newId = crypto.randomUUID().replace(/-/g, "");
+                    await prisma.$executeRaw`
+                      INSERT INTO "JobPosting" (id, title, company, location, description, "sourceUrl", source, salary, "postedAt", embedding, "scrapedAt", "firstSeenAt", "favourited")
+                      VALUES (${newId}, ${job.title}, ${job.company}, ${job.location ?? "Remote"}, ${job.description}, ${job.sourceUrl}, ${job.source}::"JobSource", ${job.salary ?? null}, ${job.postedAt ?? null}, ${JSON.stringify(embedding)}::vector, NOW(), NOW(), false)
+                      ON CONFLICT ("sourceUrl") DO UPDATE SET
+                        title = EXCLUDED.title,
+                        description = EXCLUDED.description,
+                        "scrapedAt" = NOW(),
+                        embedding = EXCLUDED.embedding
+                    `;
+                    const saved = await prisma.jobPosting.findUniqueOrThrow({ where: { sourceUrl: job.sourceUrl } });
 
                     const similarity = cosineSimilarity(queryEmbedding, embedding);
                     const isNew = saved.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS;

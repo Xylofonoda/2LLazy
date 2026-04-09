@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { generateEmbedding, generateCoverLetter, checkOllamaHealth } from "@/lib/ollama";
 import { readCvText } from "@/lib/cv";
 import { cosineSimilarity } from "@/lib/similarity";
-import { ApplicationStatus, Prisma } from "@prisma/client";
+import { ApplicationStatus } from "@prisma/client";
 
 export const resolvers = {
   Query: {
@@ -13,26 +13,25 @@ export const resolvers = {
       const text = `${query} ${skillLevel}`.trim();
       const queryEmbedding = await generateEmbedding(text);
 
-      const allJobs = await prisma.jobPosting.findMany({
-        where: { embedding: { not: Prisma.AnyNull } },
-        take: 500,
-        select: {
-          id: true,
-          title: true,
-          company: true,
-          location: true,
-          sourceUrl: true,
-          source: true,
-          salary: true,
-          postedAt: true,
-          scrapedAt: true,
-          favourited: true,
-          embedding: true,
-        },
-      });
+      const allJobs = await prisma.$queryRaw<Array<{
+        id: string; title: string; company: string; location: string | null;
+        sourceUrl: string; source: string; salary: string | null;
+        postedAt: Date | null; scrapedAt: Date; favourited: boolean;
+        embedding: string | null;
+      }>>`
+        SELECT id, title, company, location, "sourceUrl", source::text, salary,
+               "postedAt", "scrapedAt", "favourited", embedding::text as embedding
+        FROM "JobPosting"
+        WHERE embedding IS NOT NULL
+        LIMIT 500
+      `;
+      const parsedJobs = allJobs.map((j) => ({
+        ...j,
+        embedding: j.embedding ? JSON.parse(j.embedding) as number[] : null,
+      }));
       // Only compare jobs whose embedding dimensions match the query embedding
       // (dimension mismatch occurs when switching embedding providers)
-      const jobs = allJobs.filter(
+      const jobs = parsedJobs.filter(
         (j) => j.embedding !== null && (j.embedding as number[]).length === queryEmbedding.length
       );
       return jobs
