@@ -125,17 +125,26 @@ function buildCoverLetterPrompt(
   cvText: string,
   language: string,
 ): string {
-  return `You are an expert job application writer. Write a professional, concise cover letter (max 3 paragraphs) for the following job posting. Write the cover letter in ${language}.
+  return `You are an expert job application writer. Write a compelling, warm, and professional cover letter for the job below. Write in ${language}.
+
+**Output format (Markdown):**
+- Open with a short greeting line like "Dear Hiring Team at [Company],"
+- 3 focused paragraphs:
+  1. 🎯 **Why this role excites me** — reference the specific role and company by name, show genuine interest
+  2. 💡 **What I bring** — highlight 2–3 concrete achievements/skills from the CV that directly match the job requirements, using specific numbers/results where possible
+  3. 🚀 **What's next** — a confident close that invites a conversation
+- End with "Best regards," and the candidate's name (taken from the CV)
+- Keep it under 300 words
+- Use a natural, enthusiastic tone — not robotic or overly formal
+- Do NOT use placeholder text like [Your Name] — extract the real name from the CV
 
 JOB TITLE: ${jobTitle}
 COMPANY: ${company}
 JOB DESCRIPTION:
-${jobDescription.slice(0, 2000)}
+${jobDescription.slice(0, 2500)}
 
-CANDIDATE CV SUMMARY:
-${cvText.slice(0, 2000)}
-
-Write only the cover letter body text. Do not include subject lines or placeholders like [Your Name] — write as if it's ready to submit. Be specific about the role and company.`;
+CANDIDATE CV:
+${cvText.slice(0, 2500)}`;
 }
 
 /**

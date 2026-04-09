@@ -9,11 +9,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Typography,
+  Chip,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DownloadIcon from "@mui/icons-material/Download";
+import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import { downloadAsDocx } from "@/lib/downloadDocx";
+import { MarkdownContent } from "@/components/ui/MarkdownContent";
 
 interface Props {
   open: boolean;
@@ -129,51 +131,41 @@ export function CvAdjustDialog({ open, jobId, jobTitle, onClose }: Props) {
       onClose={isStreaming ? undefined : handleClose}
       maxWidth="md"
       fullWidth
+      PaperProps={{ sx: { borderRadius: 3 } }}
     >
-      <DialogTitle>
-        Adjusted CV for: {jobTitle}
-        {isStreaming ? " — Tailoring…" : ""}
+      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <AutoFixHighIcon color="primary" fontSize="small" />
+        Tailored CV
+        {isStreaming && (
+          <Chip label="Tailoring…" size="small" color="primary" variant="outlined" sx={{ ml: 1 }} />
+        )}
+        {!isStreaming && content && (
+          <Chip label="Ready" size="small" color="success" variant="outlined" sx={{ ml: 1 }} />
+        )}
+        <Box sx={{ ml: "auto", typography: "body2", color: "text.secondary", fontWeight: 400 }}>
+          {jobTitle}
+        </Box>
       </DialogTitle>
 
-      <DialogContent dividers>
+      <DialogContent dividers sx={{ p: 3, maxHeight: "65vh", overflowY: "auto" }}>
         {error ? (
           <Alert severity="error">{error}</Alert>
         ) : (
-          <Typography
-            variant="body2"
-            sx={{ whiteSpace: "pre-wrap", minHeight: 80, fontFamily: "monospace" }}
-          >
-            {content}
-            {isStreaming && (
-              <Box
-                component="span"
-                sx={{
-                  display: "inline-block",
-                  width: "0.5em",
-                  height: "1em",
-                  bgcolor: "text.primary",
-                  ml: "1px",
-                  animation: "blink 1s step-end infinite",
-                  "@keyframes blink": {
-                    "0%, 100%": { opacity: 1 },
-                    "50%": { opacity: 0 },
-                  },
-                }}
-              />
-            )}
-          </Typography>
+          <MarkdownContent content={content} streaming={isStreaming} />
         )}
       </DialogContent>
 
-      <DialogActions>
-        <Button onClick={handleClose} disabled={isStreaming}>
+      <DialogActions sx={{ px: 2.5, py: 1.5, gap: 1 }}>
+        <Button onClick={handleClose} disabled={isStreaming} color="inherit">
           Close
         </Button>
+        <Box sx={{ flex: 1 }} />
         <Button
           variant="outlined"
           startIcon={<ContentCopyIcon />}
           onClick={handleCopy}
           disabled={!content || isStreaming}
+          size="small"
         >
           {copied ? "Copied!" : "Copy"}
         </Button>
@@ -182,6 +174,7 @@ export function CvAdjustDialog({ open, jobId, jobTitle, onClose }: Props) {
           startIcon={<DownloadIcon />}
           onClick={handleDownload}
           disabled={!content || isStreaming}
+          size="small"
         >
           Download DOCX
         </Button>
@@ -189,3 +182,4 @@ export function CvAdjustDialog({ open, jobId, jobTitle, onClose }: Props) {
     </Dialog>
   );
 }
+
