@@ -27,6 +27,7 @@ import { JobCard } from "@/components/jobs/JobCard";
 import { JobFilterBar, type JobFilters, DEFAULT_JOB_FILTERS } from "@/components/jobs/JobFilterBar";
 import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
 import type { JobItem } from "@/types";
+import { useScrapeProgress } from "@/context/ScrapeProgressContext";
 
 type JobResult = JobItem;
 
@@ -48,8 +49,7 @@ export default function SearchPage() {
   const [deepSearch, setDeepSearch] = useState(false);
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
-  const [scraping, setScraping] = useState(false);
-  const [scrapePercent, setScrapePercent] = useState(0);
+  const { scraping, setScraping, scrapePercent, setScrapePercent } = useScrapeProgress();
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [filters, setFilters] = useState<JobFilters>(DEFAULT_JOB_FILTERS);
@@ -284,45 +284,6 @@ export default function SearchPage() {
           },
         }}
       />
-
-      {/* ── Floating scrape progress circle (top-right, visible while scraping) ── */}
-      {scraping && (
-        <Box
-          sx={{
-            position: "fixed",
-            top: 16,
-            right: 16,
-            zIndex: 1300,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 64,
-            height: 64,
-            borderRadius: "50%",
-            bgcolor: "background.paper",
-            boxShadow: 4,
-          }}
-        >
-          <CircularProgress
-            variant="determinate"
-            value={scrapePercent}
-            size={56}
-            thickness={4}
-            sx={{ color: scrapePercent === 100 ? "success.main" : "primary.main" }}
-          />
-          <Typography
-            variant="caption"
-            sx={{
-              position: "absolute",
-              fontWeight: 700,
-              fontSize: "0.7rem",
-              color: "text.primary",
-            }}
-          >
-            {scrapePercent}%
-          </Typography>
-        </Box>
-      )}
 
       {/* ── Page header ──────────────────────────────────────────────── */}
       <Box sx={{ mb: 3 }}>
