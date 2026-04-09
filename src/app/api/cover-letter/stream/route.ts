@@ -3,7 +3,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { APPLICATIONS_TAG } from "@/lib/data/applications";
 import { FAVOURITES_TAG } from "@/lib/data/favourites";
-import { generateCoverLetterStream } from "@/lib/ollama";
+import { generateCoverLetterStream } from "@/lib/ai";
 import { readCvText } from "@/lib/cv";
 
 export const runtime = "nodejs";

@@ -9,10 +9,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Typography,
+  Chip,
 } from "@mui/material";
 import DownloadIcon from "@mui/icons-material/Download";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import EmailIcon from "@mui/icons-material/Email";
 import { downloadAsDocx } from "@/lib/downloadDocx";
+import { MarkdownContent } from "@/components/ui/MarkdownContent";
 
 interface Props {
   open: boolean;
@@ -34,6 +37,7 @@ export function StreamingCoverLetterDialog({
   const [content, setContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -123,53 +127,64 @@ export function StreamingCoverLetterDialog({
   const handleDownload = () =>
     downloadAsDocx(content, `cover-letter-${jobTitle.toLowerCase().replace(/\s+/g, "-")}`);
 
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <Dialog
       open={open}
       onClose={isStreaming ? undefined : handleClose}
       maxWidth="md"
       fullWidth
+      PaperProps={{ sx: { borderRadius: 3 } }}
     >
-      <DialogTitle>
-        Cover Letter{isStreaming ? " — Writing…" : ""}
+      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <EmailIcon color="primary" fontSize="small" />
+        Cover Letter
+        {isStreaming && (
+          <Chip label="Writing…" size="small" color="primary" variant="outlined" sx={{ ml: 1 }} />
+        )}
+        {!isStreaming && content && (
+          <Chip label="Ready" size="small" color="success" variant="outlined" sx={{ ml: 1 }} />
+        )}
+        <Box sx={{ ml: "auto", typography: "body2", color: "text.secondary", fontWeight: 400 }}>
+          {jobTitle}
+        </Box>
       </DialogTitle>
 
-      <DialogContent dividers>
+      <DialogContent dividers sx={{ p: 3, maxHeight: "65vh", overflowY: "auto" }}>
         {error ? (
           <Alert severity="error">{error}</Alert>
         ) : (
-          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", minHeight: 80 }}>
-            {content}
-            {isStreaming && (
-              <Box
-                component="span"
-                sx={{
-                  display: "inline-block",
-                  width: "0.5em",
-                  height: "1em",
-                  bgcolor: "text.primary",
-                  verticalAlign: "text-bottom",
-                  ml: 0.25,
-                  animation: "blink 1s step-end infinite",
-                  "@keyframes blink": {
-                    "0%, 100%": { opacity: 1 },
-                    "50%": { opacity: 0 },
-                  },
-                }}
-              />
-            )}
-          </Typography>
+          <MarkdownContent content={content} streaming={isStreaming} />
         )}
       </DialogContent>
 
-      <DialogActions>
-        {!isStreaming && content && (
-          <Button startIcon={<DownloadIcon />} onClick={handleDownload}>
-            Download .docx
-          </Button>
-        )}
-        <Button onClick={handleClose} disabled={isStreaming}>
+      <DialogActions sx={{ px: 2.5, py: 1.5, gap: 1 }}>
+        <Button onClick={handleClose} disabled={isStreaming} color="inherit">
           {isStreaming ? "Generating…" : "Close"}
+        </Button>
+        <Box sx={{ flex: 1 }} />
+        <Button
+          variant="outlined"
+          startIcon={<ContentCopyIcon />}
+          onClick={handleCopy}
+          disabled={!content || isStreaming}
+          size="small"
+        >
+          {copied ? "Copied!" : "Copy"}
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          onClick={handleDownload}
+          disabled={!content || isStreaming}
+          size="small"
+        >
+          Download .docx
         </Button>
       </DialogActions>
     </Dialog>

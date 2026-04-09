@@ -27,26 +27,29 @@ import { JobCard } from "@/components/jobs/JobCard";
 import { JobFilterBar, type JobFilters, DEFAULT_JOB_FILTERS } from "@/components/jobs/JobFilterBar";
 import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
 import type { JobItem } from "@/types";
+import { useScrapeProgress } from "@/context/ScrapeProgressContext";
 
 type JobResult = JobItem;
 
 interface ScrapeEvent {
-  type: "progress" | "job" | "complete" | "error";
+  type: "progress" | "job" | "complete" | "error" | "scraperDone";
   site?: string;
   message?: string;
   data?: JobResult;
   total?: number;
+  doneCount?: number;
 }
 
 const SKILL_LEVELS = ["Junior", "Mid", "Senior", "Lead", "Any"];
 
 export default function SearchPage() {
   const queryInputRef = useRef<HTMLInputElement>(null);
+  const cityInputRef = useRef<HTMLInputElement>(null);
   const [skillLevel, setSkillLevel] = useState("Any");
   const [deepSearch, setDeepSearch] = useState(false);
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
-  const [scraping, setScraping] = useState(false);
+  const { scraping, setScraping, scrapePercent, setScrapePercent } = useScrapeProgress();
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [filters, setFilters] = useState<JobFilters>(DEFAULT_JOB_FILTERS);
@@ -65,6 +68,7 @@ export default function SearchPage() {
         const p = JSON.parse(saved) as {
           jobs?: JobResult[];
           query?: string;
+          city?: string;
           skillLevel?: string;
           deepSearch?: boolean;
           progress?: string;
@@ -72,6 +76,7 @@ export default function SearchPage() {
         };
         if (p.jobs?.length) setJobs(p.jobs.map((j) => ({ ...j, description: j.description ? j.description + "…" : "" })));
         if (p.query && queryInputRef.current) queryInputRef.current.value = p.query;
+        if (p.city && cityInputRef.current) cityInputRef.current.value = p.city ?? "";
         if (p.skillLevel) setSkillLevel(p.skillLevel);
         if (p.deepSearch !== undefined) setDeepSearch(p.deepSearch);
         // Only restore a terminal progress message, not a mid-scrape one
@@ -111,12 +116,13 @@ export default function SearchPage() {
 
   const handleSearch = async () => {
     const q = queryInputRef.current?.value.trim() ?? "";
+    const city = cityInputRef.current?.value.trim() ?? "";
     if (scraping || !q) return; // guard against double-submit (button + Enter)
     // Save query to session at submit time so it restores on navigation
     try {
       const existing = sessionStorage.getItem("job_search_session");
       const parsed = existing ? JSON.parse(existing) : {};
-      sessionStorage.setItem("job_search_session", JSON.stringify({ ...parsed, query: q }));
+      sessionStorage.setItem("job_search_session", JSON.stringify({ ...parsed, query: q, city }));
     } catch { /* storage quota exceeded */ }
     setJobs([]);
     setErrors([]);
@@ -125,6 +131,7 @@ export default function SearchPage() {
     jobArrivalIndexRef.current = new Map();
     arrivalCountRef.current = 0;
     setScraping(true);
+    setScrapePercent(0);
     setProgress("Starting scrape...");
 
     abortRef.current = new AbortController();
@@ -133,7 +140,7 @@ export default function SearchPage() {
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q, skillLevel, deepSearch }),
+        body: JSON.stringify({ query: q, skillLevel, deepSearch, city }),
         signal: abortRef.current.signal,
       });
 
@@ -160,6 +167,8 @@ export default function SearchPage() {
             const event = JSON.parse(line.slice(6)) as ScrapeEvent;
             if (event.type === "progress") {
               setProgress(event.message ?? null);
+            } else if (event.type === "scraperDone" && event.doneCount != null && event.total != null) {
+              setScrapePercent(Math.round((event.doneCount / event.total) * 100));
             } else if (event.type === "job" && event.data) {
               const jobId = event.data.id;
               if (!newJobIdsRef.current.has(jobId)) {
@@ -171,6 +180,7 @@ export default function SearchPage() {
                 return exists ? prev : [...prev, event.data!];
               });
             } else if (event.type === "complete") {
+              setScrapePercent(100);
               setProgress(`Done — ${event.total} jobs found`);
               setScraping(false);
             } else if (event.type === "error") {
@@ -192,6 +202,7 @@ export default function SearchPage() {
               return exists ? prev : [...prev, event.data!];
             });
           } else if (event.type === "complete") {
+            setScrapePercent(100);
             setProgress(`Done — ${event.total} jobs found`);
             setScraping(false);
           }
@@ -237,6 +248,20 @@ export default function SearchPage() {
     .filter((job) => {
       if (filters.source !== "ALL" && job.source !== filters.source) return false;
       if (filters.hasSalary && !job.salary) return false;
+      if (filters.workType !== "ALL" && job.workType && job.workType !== filters.workType) return false;
+      if (filters.city.trim()) {
+        const cityQ = filters.city.toLowerCase();
+        if (!job.location.toLowerCase().includes(cityQ)) return false;
+      }
+      if (filters.salaryMin || filters.salaryMax) {
+        if (!job.salary) return false;
+        const nums = job.salary.match(/[\d\s]+/g)?.map((n) => parseInt(n.replace(/\s/g, ""), 10)).filter((n) => !isNaN(n) && n > 0) ?? [];
+        if (nums.length > 0) {
+          const mid = nums.reduce((a, b) => a + b, 0) / nums.length;
+          if (filters.salaryMin && mid < parseInt(filters.salaryMin, 10)) return false;
+          if (filters.salaryMax && mid > parseInt(filters.salaryMax, 10)) return false;
+        }
+      }
       if (filters.position.trim()) {
         const q = filters.position.toLowerCase();
         if (
@@ -288,6 +313,16 @@ export default function SearchPage() {
               variant="outlined"
               size="small"
             />
+            <TextField
+              label="City (optional)"
+              placeholder="e.g. Praha, Brno"
+              inputRef={cityInputRef}
+              defaultValue=""
+              onKeyDown={(e) => e.key === "Enter" && !scraping && handleSearch()}
+              variant="outlined"
+              size="small"
+              sx={{ minWidth: 160, flexShrink: 0 }}
+            />
             <FormControl size="small" sx={{ minWidth: 130, flexShrink: 0 }}>
               <InputLabel>Skill Level</InputLabel>
               <Select
@@ -329,7 +364,7 @@ export default function SearchPage() {
                     Deep Search
                   </Typography>
                 }
-                sx={{ ml: 0 }}
+                sx={{ ml: 0, gap: 0.5 }}
               />
             </Tooltip>
             {progress && (

@@ -1,9 +1,14 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generateEmbedding } from "@/lib/ollama";
+import { generateEmbedding, expandQueryForEmbedding } from "@/lib/ai";
 import { scrapeCocuma } from "@/lib/scrapers/cocuma";
 import { scrapeStartupJobs } from "@/lib/scrapers/startupjobs";
 import { scrapeJobstack } from "@/lib/scrapers/jobstack";
+import { scrapeSkilleto } from "@/lib/scrapers/skilleto";
+import { scrapeNoFluffJobs } from "@/lib/scrapers/nofluffjobs";
+import { scrapeJobsCz } from "@/lib/scrapers/jobscz";
+import { scrapeGlassdoor } from "@/lib/scrapers/glassdoor";
+import { scrapeJooble } from "@/lib/scrapers/jooble";
 import { ScrapedJob } from "@/lib/scrapers/types";
 import { cosineSimilarity } from "@/lib/similarity";
 
@@ -28,9 +33,9 @@ const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 type SSEEvent =
   | { type: "progress"; site: string; message: string }
   | { type: "job"; data: ScrapedJob & { id: string; favourited: boolean; similarity: number; isNew: boolean } }
+  | { type: "scraperDone"; site: string; doneCount: number; total: number }
   | { type: "complete"; total: number }
   | { type: "error"; site: string; message: string };
-
 function sseChunk(event: SSEEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
@@ -48,6 +53,9 @@ export async function POST(req: NextRequest) {
   const query: string = body.query ?? "";
   const skillLevel: string = body.skillLevel ?? "";
   const deepSearch: boolean = body.deepSearch === true;
+  const city: string = body.city ?? "";
+  const salaryMin: number | null = typeof body.salaryMin === "number" ? body.salaryMin : null;
+  const salaryMax: number | null = typeof body.salaryMax === "number" ? body.salaryMax : null;
 
   if (!query) {
     return new Response("Missing query", { status: 400 });
@@ -61,6 +69,7 @@ export async function POST(req: NextRequest) {
     await writer.write(encoder.encode(sseChunk(event)));
   };
 
+  // Three scrapers run in parallel via Promise.allSettled below
   const scrapers: Array<{
     name: string;
     fn: () => Promise<ScrapedJob[]>;
@@ -68,22 +77,30 @@ export async function POST(req: NextRequest) {
       { name: "Cocuma", fn: () => scrapeCocuma(query, skillLevel, deepSearch) },
       { name: "StartupJobs", fn: () => scrapeStartupJobs(query, skillLevel, deepSearch) },
       { name: "Jobstack", fn: () => scrapeJobstack(query, skillLevel, deepSearch) },
+      { name: "Skilleto", fn: () => scrapeSkilleto(query, skillLevel, deepSearch, city) },
+      { name: "NoFluffJobs", fn: () => scrapeNoFluffJobs(query, skillLevel, deepSearch, city) },
+      { name: "Jobs.cz", fn: () => scrapeJobsCz(query, skillLevel, deepSearch, city) },
+      { name: "Glassdoor", fn: () => scrapeGlassdoor(query, skillLevel, deepSearch, city) },
+      { name: "Jooble", fn: () => scrapeJooble(query, skillLevel, deepSearch, city) },
     ];
 
   (async () => {
     try {
       // Step 1: embed the search query so we can rank against it
+      // Expand short queries (e.g. "Frontend") into rich descriptions for better semantic ranking
       await send({ type: "progress", site: "Search", message: "Generating search embedding…" });
-      const queryText = [skillLevel !== "Any" ? skillLevel : "", query]
-        .filter(Boolean)
-        .join(" ");
-      const queryEmbedding = await generateEmbedding(queryText);
+      const expandedQuery = await expandQueryForEmbedding(query, skillLevel);
+      const queryEmbedding = await generateEmbedding(expandedQuery);
 
       let totalEmitted = 0;
+      let doneCount = 0;
+      const totalScrapers = scrapers.length;
+      const SIMILARITY_THRESHOLD = 0.30;
+      const MAX_PER_SOURCE = deepSearch ? Infinity : 20;
 
       await Promise.allSettled(
         scrapers.map(async (scraper) => {
-          await send({ type: "progress", site: scraper.name, message: `Scraping ${scraper.name}...` });
+          await send({ type: "progress", site: scraper.name, message: `Scraping ${scraper.name}…` });
           try {
             const jobs = await scraper.fn();
 
@@ -111,10 +128,11 @@ export async function POST(req: NextRequest) {
               } as ExistingRecord);
             }
 
-            // Embed + save + emit in batches of 5; emit each job immediately (no post-sort)
-            for (let i = 0; i < jobs.length; i += 5) {
+            await send({ type: "progress", site: scraper.name, message: `Ranking ${scraper.name} results…` });
+
+            for (let i = 0; i < jobs.length; i += 8) {
               await Promise.allSettled(
-                jobs.slice(i, i + 5).map(async (job) => {
+                jobs.slice(i, i + 8).map(async (job) => {
                   job.title = dedupe(job.title);
                   job.company = dedupe(job.company);
                   job.location = dedupe(job.location);
@@ -124,51 +142,90 @@ export async function POST(req: NextRequest) {
                       ? (Date.now() - existing.scrapedAt.getTime()) / 3_600_000
                       : Infinity;
 
-                    // Dimension mismatch means the embedding was from a different provider
                     const storedEmbedding = existing?.embedding as number[] | null | undefined;
                     const dimensionMatch =
                       storedEmbedding && storedEmbedding.length === queryEmbedding.length;
 
+                    let embedding: number[];
+                    let id: string;
+                    let favourited: boolean;
+                    let isNew: boolean;
+
                     if (existing?.embedding && ageHours < 24 && dimensionMatch) {
-                      // Cache hit: reuse stored embedding, skip OpenAI call
-                      const embedding = storedEmbedding!;
-                      const similarity = cosineSimilarity(queryEmbedding, embedding);
-                      const isNew = existing.firstSeenAt
+                      embedding = storedEmbedding!;
+                      id = existing.id;
+                      favourited = existing.favourited;
+                      isNew = existing.firstSeenAt
                         ? existing.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS
                         : false;
-                      totalEmitted++;
-                      await send({ type: "job", data: { ...job, id: existing.id, favourited: existing.favourited, similarity, isNew } });
-                      return;
+                    } else {
+                      const embeddingText = `${job.title}\n${job.title}\n${job.description.slice(0, 1200)}`;
+                      embedding = await generateEmbedding(embeddingText);
+
+                      const newId = crypto.randomUUID().replace(/-/g, "");
+                      await prisma.$executeRaw`
+                        INSERT INTO "JobPosting" (id, title, company, location, description, "sourceUrl", source, salary, "workType", "postedAt", embedding, "scrapedAt", "firstSeenAt", "favourited")
+                        VALUES (${newId}, ${job.title}, ${job.company}, ${job.location ?? "Remote"}, ${job.description}, ${job.sourceUrl}, ${job.source}::"JobSource", ${job.salary ?? null}, ${job.workType ?? null}, ${job.postedAt ?? null}, ${JSON.stringify(embedding)}::vector, NOW(), NOW(), false)
+                        ON CONFLICT ("sourceUrl") DO UPDATE SET
+                          title = EXCLUDED.title,
+                          description = EXCLUDED.description,
+                          "workType" = EXCLUDED."workType",
+                          "scrapedAt" = NOW(),
+                          embedding = EXCLUDED.embedding
+                      `;
+                      const saved = await prisma.jobPosting.findUniqueOrThrow({ where: { sourceUrl: job.sourceUrl } });
+                      id = saved.id;
+                      favourited = saved.favourited;
+                      isNew = saved.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS;
                     }
 
-                    const embeddingText = `${job.title}\n${job.title}\n${job.description.slice(0, 1200)}`;
-                    const embedding = await generateEmbedding(embeddingText);
+                    const baseSimilarity = cosineSimilarity(queryEmbedding, embedding);
+                    // Boost similarity for jobs that have salary info matching user's desired range
+                    let similarity = baseSimilarity;
+                    if (job.salary && (salaryMin !== null || salaryMax !== null)) {
+                      // Extract first number from salary string as a rough match
+                      const nums = job.salary.match(/[\d\s]+/g)?.map((n) => parseInt(n.replace(/\s/g, ""), 10)).filter((n) => !isNaN(n) && n > 0) ?? [];
+                      if (nums.length > 0) {
+                        const mid = nums.reduce((a, b) => a + b, 0) / nums.length;
+                        const inRange =
+                          (salaryMin === null || mid >= salaryMin) &&
+                          (salaryMax === null || mid <= salaryMax);
+                        if (inRange) similarity = Math.min(1, similarity + 0.08);
+                      }
+                    } else if (job.salary && salaryMin === null && salaryMax === null) {
+                      // Slight boost for having any salary info (user prefers transparent pay)
+                      similarity = Math.min(1, similarity + 0.02);
+                    }
 
-                    const newId = crypto.randomUUID().replace(/-/g, "");
-                    await prisma.$executeRaw`
-                      INSERT INTO "JobPosting" (id, title, company, location, description, "sourceUrl", source, salary, "postedAt", embedding, "scrapedAt", "firstSeenAt", "favourited")
-                      VALUES (${newId}, ${job.title}, ${job.company}, ${job.location ?? "Remote"}, ${job.description}, ${job.sourceUrl}, ${job.source}::"JobSource", ${job.salary ?? null}, ${job.postedAt ?? null}, ${JSON.stringify(embedding)}::vector, NOW(), NOW(), false)
-                      ON CONFLICT ("sourceUrl") DO UPDATE SET
-                        title = EXCLUDED.title,
-                        description = EXCLUDED.description,
-                        "scrapedAt" = NOW(),
-                        embedding = EXCLUDED.embedding
-                    `;
-                    const saved = await prisma.jobPosting.findUniqueOrThrow({ where: { sourceUrl: job.sourceUrl } });
-
-                    const similarity = cosineSimilarity(queryEmbedding, embedding);
-                    const isNew = saved.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS;
-                    totalEmitted++;
-                    await send({ type: "job", data: { ...job, id: saved.id, favourited: saved.favourited, similarity, isNew } });
+                    // Emit immediately (emit-as-you-go streaming)
+                    if (similarity >= SIMILARITY_THRESHOLD) {
+                      totalEmitted++;
+                      await send({ type: "job", data: { ...job, id, favourited, similarity, isNew } });
+                    }
                   } catch (err) {
                     console.error(`[scrape] Failed to save job ${job.sourceUrl}:`, err);
                   }
                 }),
               );
             }
+
           } catch (err) {
-            const message = err instanceof Error ? err.message : "Unknown error";
+            let message = "Unknown error";
+            if (err instanceof Error) {
+              message = err.message;
+              if (err.cause) message += ` (cause: ${err.cause})`;
+            } else if (err && typeof err === "object" && "message" in err) {
+              message = String((err as { message: unknown }).message);
+            } else if (typeof err === "string") {
+              message = err;
+            } else {
+              message = JSON.stringify(err);
+            }
+            console.error(`[scrape] ${scraper.name} error:`, err);
             await send({ type: "error", site: scraper.name, message });
+          } finally {
+            doneCount++;
+            await send({ type: "scraperDone", site: scraper.name, doneCount, total: totalScrapers });
           }
         }),
       );

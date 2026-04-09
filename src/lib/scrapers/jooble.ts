@@ -1,7 +1,7 @@
 /**
- * StartupJobs scraper — uses Playwright because the JSON API is frequently
- * blocked / rate-limited.  We load the HTML listing page instead and extract
- * job cards directly from the rendered DOM.
+ * Jooble scraper — uses Playwright to bypass 403 bot protection.
+ * URL: https://cz.jooble.org/jobs-{query}
+ * Falls back gracefully if still blocked.
  */
 import { pwFetch } from "./playwright-browser";
 import { batchProcess } from "./utils";
@@ -9,33 +9,27 @@ import { extractJobFromText } from "./extract";
 import { ScrapedJob } from "./types";
 import { extractRelevantJobsFromPage } from "@/lib/ai";
 
-const BASE = "https://www.startupjobs.cz";
-
-export async function scrapeStartupJobs(
+export async function scrapeJooble(
   query: string,
   skillLevel: string,
   deepSearch = false,
+  city = "",
 ): Promise<ScrapedJob[]> {
-  const seniorityMap: Record<string, string> = {
-    Junior: "junior",
-    Mid: "medior",
-    Senior: "senior",
-    Lead: "lead",
-  };
-  const seniority = seniorityMap[skillLevel];
-  const MAX_PAGES = deepSearch ? 4 : 2;
+  const MAX_PAGES = deepSearch ? 3 : 1;
   const jobs: ScrapedJob[] = [];
 
-  for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
-    const params = new URLSearchParams({ search: query });
-    if (seniority) params.set("seniority", seniority);
-    if (pageNum > 1) params.set("page", String(pageNum));
+  const slug = encodeURIComponent(query.replace(/\s+/g, "-"));
+  const citySlug = city ? encodeURIComponent(city) : "";
 
-    const listUrl = `${BASE}/nabidky?${params.toString()}`;
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const base = citySlug
+      ? `https://cz.jooble.org/jobs-${slug}/${citySlug}`
+      : `https://cz.jooble.org/jobs-${slug}`;
+    const searchUrl = page > 1 ? `${base}?p=${page}` : base;
 
     let result: { text: string; links: Array<{ text: string; url: string }> };
     try {
-      result = await pwFetch(listUrl, "[class*='offer'], [class*='job-card'], a[href*='/nabidka/']");
+      result = await pwFetch(searchUrl, "[class*='job-item'], [class*='vacancy'], article[class*='job']");
     } catch {
       break;
     }
@@ -49,15 +43,16 @@ export async function scrapeStartupJobs(
     const batchedJobs = await batchProcess(relevant, 5, async ({ title, url }) => {
       try {
         const { text } = await pwFetch(url);
-        const extracted = await extractJobFromText(text, { url, title, company: "", location: "Czech Republic" });
+        const extracted = await extractJobFromText(text, { url, title, company: "", location: city || "Czech Republic" });
         if (!extracted.title) return null;
+
         return {
           title: extracted.title,
           company: extracted.company,
           location: extracted.location,
           description: extracted.description,
           sourceUrl: url,
-          source: "STARTUPJOBS" as const,
+          source: "JOOBLE" as const,
           salary: extracted.salary || undefined,
           workType: extracted.workType || undefined,
         };

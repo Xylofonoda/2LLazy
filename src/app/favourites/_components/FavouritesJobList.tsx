@@ -24,11 +24,15 @@ export function FavouritesJobList({
         severity="info"
         sx={{
           mt: 2,
-          display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: 2,
-          flexWrap: "wrap",
+          "& .MuiAlert-message": {
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexGrow: 1,
+            gap: 2,
+            flexWrap: "wrap",
+          },
         }}
       >
         <span>No favourites yet. Save jobs from Search using the Interested button.</span>

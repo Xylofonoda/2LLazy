@@ -15,6 +15,11 @@ enum JobSource {
   STARTUPJOBS
   JOBSTACK
   COCUMA
+  SKILLETO
+  NOFLUFFJOBS
+  JOBSCZ
+  GLASSDOOR
+  JOOBLE
 }
 
 enum ApplicationStatus {
@@ -48,6 +53,7 @@ model JobPosting {
   sourceUrl    String                        @unique
   source       JobSource
   salary       String?
+  workType     String?
   postedAt     DateTime?
   scrapedAt    DateTime                      @default(now())
   firstSeenAt  DateTime                      @default(now())

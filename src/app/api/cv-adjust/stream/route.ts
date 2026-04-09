@@ -25,17 +25,49 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const prompt = `You are a professional CV writer. Tailor the following CV to the job description provided.
-Reorder bullet points, adjust the summary, and emphasise relevant skills and experience.
-Do NOT fabricate any experience, skills, or qualifications not present in the original CV.
-Return the complete tailored CV as plain text.
+  const prompt = `You are an expert CV writer and personal branding specialist. Tailor the candidate's CV specifically for the job below — reorder sections, rewrite bullet points to use stronger action verbs, and emphasise directly relevant skills and achievements.
+
+**Output format: structured Markdown with emojis as section icons**
+
+Use this structure (adapt to what's in the CV):
+
+# [Full Name]
+[email] · [phone] · [LinkedIn/GitHub if present]
+
+---
+
+## 🎯 Professional Summary
+2–3 sentences tailored to this specific role. Mention the job title and key skills the employer is looking for.
+
+## 🛠️ Skills
+Comma-separated list, most relevant to this job first. Bold the top 5–6 matching skills.
+
+## 💼 Experience
+### [Job Title] · [Company] · [Dates]
+- Strong action-verb bullet points (e.g. "Built...", "Led...", "Reduced...")
+- Quantify results where possible (%, time saved, team size, etc.)
+- Put the most job-relevant bullets first
+
+## 🎓 Education
+### [Degree] · [University] · [Year]
+
+## 🏆 Achievements / Projects (if present in CV)
+Highlight any that are relevant to this job.
+
+---
+
+**Rules:**
+- Do NOT fabricate experience, skills, or qualifications not in the original CV
+- Do NOT use placeholder text like [Your Name] — use the real name from the CV
+- Keep total length reasonable (1–2 pages equivalent)
+- Write in the same language as the original CV
 
 --- JOB ---
 Title: ${job.title}
 Company: ${job.company}
 ${job.description.slice(0, 3000)}
 
---- CV ---
+--- ORIGINAL CV ---
 ${cvText.slice(0, 6000)}`;
 
   const encoder = new TextEncoder();

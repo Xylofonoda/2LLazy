@@ -8,5 +8,6 @@ export interface ScrapedJob {
   sourceUrl: string;
   source: JobSource;
   salary?: string;
+  workType?: string;
   postedAt?: Date;
 }

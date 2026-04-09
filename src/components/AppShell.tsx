@@ -22,6 +22,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/lib/actions/authActions";
 import { ios } from "@/theme/theme";
+import { useScrapeProgress } from "@/context/ScrapeProgressContext";
+import CircularProgress from "@mui/material/CircularProgress";
+import Tooltip from "@mui/material/Tooltip";
 
 const DRAWER_WIDTH = 236;
 
@@ -36,6 +39,7 @@ const NAV_ITEMS = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { scraping, scrapePercent } = useScrapeProgress();
 
   // Login page: render without the shell
   if (pathname.startsWith("/login")) {
@@ -219,6 +223,56 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </Box>
       </Box>
+      {/* ── Global scrape progress circle (top-right, persists across pages) ── */}
+      {scraping && (
+        <Tooltip title={`Searching jobs… ${scrapePercent}%`} placement="left">
+          <Box
+            component={Link}
+            href="/"
+            sx={{
+              position: "fixed",
+              bottom: 24,
+              right: 24,
+              zIndex: 1400,
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              bgcolor: "background.paper",
+              boxShadow: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              textDecoration: "none",
+              transition: "transform 0.15s ease, box-shadow 0.15s ease",
+              "&:hover": { transform: "scale(1.08)", boxShadow: 10 },
+              "&:active": { transform: "scale(0.96)" },
+            }}
+          >
+            <CircularProgress
+              variant="determinate"
+              value={scrapePercent}
+              size={56}
+              thickness={4}
+              sx={{ color: scrapePercent === 100 ? "success.main" : "primary.main", position: "absolute" }}
+            />
+            {/* Track ring */}
+            <CircularProgress
+              variant="determinate"
+              value={100}
+              size={56}
+              thickness={4}
+              sx={{ color: "action.disabledBackground", position: "absolute" }}
+            />
+            <Typography
+              variant="caption"
+              sx={{ fontWeight: 700, fontSize: "0.68rem", color: "text.primary", zIndex: 1 }}
+            >
+              {scrapePercent}%
+            </Typography>
+          </Box>
+        </Tooltip>
+      )}
     </Box>
   );
 }

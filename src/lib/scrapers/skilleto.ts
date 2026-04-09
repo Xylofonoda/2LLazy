@@ -1,47 +1,35 @@
-/**
- * StartupJobs scraper — uses Playwright because the JSON API is frequently
- * blocked / rate-limited.  We load the HTML listing page instead and extract
- * job cards directly from the rendered DOM.
- */
 import { pwFetch } from "./playwright-browser";
 import { batchProcess } from "./utils";
 import { extractJobFromText } from "./extract";
 import { ScrapedJob } from "./types";
 import { extractRelevantJobsFromPage } from "@/lib/ai";
 
-const BASE = "https://www.startupjobs.cz";
-
-export async function scrapeStartupJobs(
+export async function scrapeSkilleto(
   query: string,
   skillLevel: string,
   deepSearch = false,
+  city = "",
 ): Promise<ScrapedJob[]> {
-  const seniorityMap: Record<string, string> = {
-    Junior: "junior",
-    Mid: "medior",
-    Senior: "senior",
-    Lead: "lead",
-  };
-  const seniority = seniorityMap[skillLevel];
-  const MAX_PAGES = deepSearch ? 4 : 2;
+  const MAX_PAGES = deepSearch ? 3 : 1;
   const jobs: ScrapedJob[] = [];
 
-  for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
-    const params = new URLSearchParams({ search: query });
-    if (seniority) params.set("seniority", seniority);
-    if (pageNum > 1) params.set("page", String(pageNum));
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const params = new URLSearchParams({ q: query });
+    if (city) params.set("city", city);
+    if (page > 1) params.set("page", String(page));
 
-    const listUrl = `${BASE}/nabidky?${params.toString()}`;
-
+    const searchUrl = `https://www.skilleto.cz/volna-mista/?${params.toString()}`;
     let result: { text: string; links: Array<{ text: string; url: string }> };
+
     try {
-      result = await pwFetch(listUrl, "[class*='offer'], [class*='job-card'], a[href*='/nabidka/']");
+      // Skilleto is a SPA — needs JS rendering
+      result = await pwFetch(searchUrl, "[class*='job'], [class*='offer'], [class*='position'], a[href*='/pozice/']");
     } catch {
       break;
     }
 
     const { text: pageText, links } = result;
-    if (!pageText || pageText.length < 200) break;
+    if (!links.length && !pageText) break;
 
     const relevant = await extractRelevantJobsFromPage(query, skillLevel, pageText, links);
     if (relevant.length === 0) break;
@@ -49,15 +37,16 @@ export async function scrapeStartupJobs(
     const batchedJobs = await batchProcess(relevant, 5, async ({ title, url }) => {
       try {
         const { text } = await pwFetch(url);
-        const extracted = await extractJobFromText(text, { url, title, company: "", location: "Czech Republic" });
+        const extracted = await extractJobFromText(text, { url, title, company: "", location: city || "Czech Republic" });
         if (!extracted.title) return null;
+
         return {
           title: extracted.title,
           company: extracted.company,
           location: extracted.location,
           description: extracted.description,
           sourceUrl: url,
-          source: "STARTUPJOBS" as const,
+          source: "SKILLETO" as const,
           salary: extracted.salary || undefined,
           workType: extracted.workType || undefined,
         };
