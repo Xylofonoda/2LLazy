@@ -59,6 +59,7 @@ export default function SearchPage() {
   // Maps job ID → arrival index so we can stagger the entrance animation delay
   const jobArrivalIndexRef = useRef<Map<string, number>>(new Map());
   const arrivalCountRef = useRef(0);
+  const uniqueJobCountRef = useRef(0);
 
   // Restore last search session when navigating back to this page
   useEffect(() => {
@@ -130,6 +131,7 @@ export default function SearchPage() {
     newJobIdsRef.current = new Set();
     jobArrivalIndexRef.current = new Map();
     arrivalCountRef.current = 0;
+    uniqueJobCountRef.current = 0;
     setScraping(true);
     setScrapePercent(0);
     setProgress("Starting scrape...");
@@ -177,11 +179,12 @@ export default function SearchPage() {
               }
               setJobs((prev) => {
                 const exists = prev.some((j) => j.id === event.data!.id);
+                if (!exists) uniqueJobCountRef.current++;
                 return exists ? prev : [...prev, event.data!];
               });
             } else if (event.type === "complete") {
               setScrapePercent(100);
-              setProgress(`Done — ${event.total} jobs found`);
+              setProgress(`Done — ${uniqueJobCountRef.current} jobs found`);
               setScraping(false);
             } else if (event.type === "error") {
               setErrors((prev) => [...prev, `${event.site}: ${event.message}`]);
@@ -199,11 +202,12 @@ export default function SearchPage() {
           if (event.type === "job" && event.data) {
             setJobs((prev) => {
               const exists = prev.some((j) => j.id === event.data!.id);
+              if (!exists) uniqueJobCountRef.current++;
               return exists ? prev : [...prev, event.data!];
             });
           } else if (event.type === "complete") {
             setScrapePercent(100);
-            setProgress(`Done — ${event.total} jobs found`);
+            setProgress(`Done — ${uniqueJobCountRef.current} jobs found`);
             setScraping(false);
           }
         } catch { /* incomplete */ }

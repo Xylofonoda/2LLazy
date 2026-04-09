@@ -18,14 +18,12 @@ export async function scrapeJooble(
   const MAX_PAGES = deepSearch ? 3 : 1;
   const jobs: ScrapedJob[] = [];
 
-  const slug = encodeURIComponent(query.replace(/\s+/g, "-"));
-  const citySlug = city ? encodeURIComponent(city) : "";
-
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const base = citySlug
-      ? `https://cz.jooble.org/jobs-${slug}/${citySlug}`
-      : `https://cz.jooble.org/jobs-${slug}`;
-    const searchUrl = page > 1 ? `${base}?p=${page}` : base;
+    const params = new URLSearchParams({ ukw: query });
+    if (city) params.set("l", city);
+    if (page > 1) params.set("p", String(page));
+
+    const searchUrl = `https://cz.jooble.org/SearchResult?${params.toString()}`;
 
     let result: { text: string; links: Array<{ text: string; url: string }> };
     try {

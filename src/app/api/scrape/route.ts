@@ -7,7 +7,6 @@ import { scrapeJobstack } from "@/lib/scrapers/jobstack";
 import { scrapeSkilleto } from "@/lib/scrapers/skilleto";
 import { scrapeNoFluffJobs } from "@/lib/scrapers/nofluffjobs";
 import { scrapeJobsCz } from "@/lib/scrapers/jobscz";
-import { scrapeGlassdoor } from "@/lib/scrapers/glassdoor";
 import { scrapeJooble } from "@/lib/scrapers/jooble";
 import { ScrapedJob } from "@/lib/scrapers/types";
 import { cosineSimilarity } from "@/lib/similarity";
@@ -80,7 +79,6 @@ export async function POST(req: NextRequest) {
       { name: "Skilleto", fn: () => scrapeSkilleto(query, skillLevel, deepSearch, city) },
       { name: "NoFluffJobs", fn: () => scrapeNoFluffJobs(query, skillLevel, deepSearch, city) },
       { name: "Jobs.cz", fn: () => scrapeJobsCz(query, skillLevel, deepSearch, city) },
-      { name: "Glassdoor", fn: () => scrapeGlassdoor(query, skillLevel, deepSearch, city) },
       { name: "Jooble", fn: () => scrapeJooble(query, skillLevel, deepSearch, city) },
     ];
 
@@ -92,7 +90,7 @@ export async function POST(req: NextRequest) {
       const expandedQuery = await expandQueryForEmbedding(query, skillLevel);
       const queryEmbedding = await generateEmbedding(expandedQuery);
 
-      let totalEmitted = 0;
+      const emittedIds = new Set<string>();
       let doneCount = 0;
       const totalScrapers = scrapers.length;
       const SIMILARITY_THRESHOLD = 0.30;
@@ -199,7 +197,7 @@ export async function POST(req: NextRequest) {
 
                     // Emit immediately (emit-as-you-go streaming)
                     if (similarity >= SIMILARITY_THRESHOLD) {
-                      totalEmitted++;
+                      emittedIds.add(id);
                       await send({ type: "job", data: { ...job, id, favourited, similarity, isNew } });
                     }
                   } catch (err) {
@@ -230,7 +228,7 @@ export async function POST(req: NextRequest) {
         }),
       );
 
-      await send({ type: "complete", total: totalEmitted });
+      await send({ type: "complete", total: emittedIds.size });
     } catch (err) {
       await send({ type: "error", site: "Search", message: err instanceof Error ? err.message : String(err) });
     } finally {

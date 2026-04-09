@@ -42,7 +42,6 @@ export const SOURCE_COLOR: Record<string, SourceChipColor> = {
   SKILLETO: "secondary",
   NOFLUFFJOBS: "primary",
   JOBSCZ: "error",
-  GLASSDOOR: "success",
   JOOBLE: "warning",
 };
 

@@ -20,7 +20,7 @@ export async function scrapeJobsCz(
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const params = new URLSearchParams();
-    params.set("q[]", query);
+    params.set("q", query);
     if (city) params.set("locality[city]", city);
     if (page > 1) params.set("page", String(page));
 
