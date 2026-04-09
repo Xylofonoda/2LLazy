@@ -119,7 +119,7 @@ export function DashboardFilterBar({
             />
           }
           label={<Typography variant="body2" color="text.secondary">Has Salary</Typography>}
-          sx={{ ml: 0 }}
+          sx={{ ml: 0, gap: 0.5 }}
         />
       </Stack>
     </Box>

@@ -329,7 +329,7 @@ export default function SearchPage() {
                     Deep Search
                   </Typography>
                 }
-                sx={{ ml: 0 }}
+                sx={{ ml: 0, gap: 0.5 }}
               />
             </Tooltip>
             {progress && (

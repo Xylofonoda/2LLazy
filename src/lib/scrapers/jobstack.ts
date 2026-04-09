@@ -42,7 +42,7 @@ export async function scrapeJobstack(
 
     if (seeds.length === 0) break;
 
-    const batchedJobs = await batchProcess(seeds, 4, async (seed) => {
+    const batchedJobs = await batchProcess(seeds, 6, async (seed) => {
       const { text } = await fetchPage(seed.url);
       const extracted = await extractJobFromText(text, seed);
       if (!extracted.title) return null;

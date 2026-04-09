@@ -44,7 +44,7 @@ export async function scrapeCocuma(
 
     if (jobLinks.length === 0) break;
 
-    const batchedJobs = await batchProcess(jobLinks, 4, async (link) => {
+    const batchedJobs = await batchProcess(jobLinks, 6, async (link) => {
       const { text } = await fetchPage(link.url);
       const seed = {
         url: link.url,

@@ -44,55 +44,12 @@ export async function rawFetch(
 }
 
 /**
- * Fetches a URL via Jina AI Reader (https://r.jina.ai/).
- * Returns Markdown content including embedded links.
- * Works on JS-heavy pages since Jina renders them server-side.
- */
-export async function jinaFetch(url: string): Promise<string> {
-  const jinaUrl = `https://r.jina.ai/${url}`;
-  const res = await fetch(jinaUrl, {
-    headers: {
-      Accept: "text/plain",
-      "X-No-Cache": "true",
-    },
-  });
-  if (!res.ok) throw new Error(`jinaFetch ${url} → ${res.status}`);
-  return res.text();
-}
-
-/**
- * Extracts all markdown-style links from Jina markdown output.
- */
-export function extractLinksFromMarkdown(
-  markdown: string,
-): Array<{ text: string; url: string }> {
-  const links: Array<{ text: string; url: string }> = [];
-  const re = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(markdown)) !== null) {
-    links.push({ text: m[1].trim(), url: m[2].trim() });
-  }
-  return links;
-}
-
-/**
- * Smart page fetcher: tries raw HTTP + Cheerio first.
- * Falls back to Jina AI Reader when the extracted text is < 300 chars
- * (indicating a JS-heavy page that didn't render useful content).
+ * Fetch a page. For JS-rendered sites that return bare HTML shells,
+ * callers must handle empty link results themselves.
  */
 export async function fetchPage(
   url: string,
 ): Promise<{ text: string; links: Array<{ text: string; url: string }> }> {
-  try {
-    const result = await rawFetch(url);
-    if (result.text.length >= 300) return result;
-  } catch {
-    // fall through to Jina
-  }
-  // JS-heavy or failed — use Jina AI Reader
-  const markdown = await jinaFetch(url);
-  return {
-    text: markdown,
-    links: extractLinksFromMarkdown(markdown),
-  };
+  return rawFetch(url);
 }
+

@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     await writer.write(encoder.encode(sseChunk(event)));
   };
 
+  // Three scrapers run in parallel via Promise.allSettled below
   const scrapers: Array<{
     name: string;
     fn: () => Promise<ScrapedJob[]>;
@@ -111,10 +112,10 @@ export async function POST(req: NextRequest) {
               } as ExistingRecord);
             }
 
-            // Embed + save + emit in batches of 5; emit each job immediately (no post-sort)
-            for (let i = 0; i < jobs.length; i += 5) {
+            // Embed + save + emit in batches of 8; emit each job immediately (no post-sort)
+            for (let i = 0; i < jobs.length; i += 8) {
               await Promise.allSettled(
-                jobs.slice(i, i + 5).map(async (job) => {
+                jobs.slice(i, i + 8).map(async (job) => {
                   job.title = dedupe(job.title);
                   job.company = dedupe(job.company);
                   job.location = dedupe(job.location);
