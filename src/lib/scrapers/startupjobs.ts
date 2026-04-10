@@ -71,10 +71,10 @@ export async function scrapeStartupJobs(
     if (deepSearch) {
       const { prisma } = await import("@/lib/prisma");
       const pageUrls = relevant.map((j) => j.url);
-      const existingCount = await prisma.jobPosting.count({
-        where: { sourceUrl: { in: pageUrls } },
+      const freshCount = await prisma.jobPosting.count({
+        where: { sourceUrl: { in: pageUrls }, scrapedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
       });
-      if (existingCount === pageUrls.length) break;
+      if (freshCount === pageUrls.length) break;
     }
   }
 

@@ -112,6 +112,19 @@ export function JobCard({
                 variant="outlined"
               />
             )}
+            {job.isStale && !job.isNew && (
+              <Chip
+                label="CACHED"
+                size="small"
+                variant="outlined"
+                sx={{
+                  color: ios.label3,
+                  borderColor: ios.label3,
+                  fontSize: "0.65rem",
+                  height: 20,
+                }}
+              />
+            )}
             <Chip
               label={job.source}
               size="small"

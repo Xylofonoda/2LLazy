@@ -63,6 +63,8 @@ export interface JobItem {
   coverLetter?: { id: string; content: string } | null;
   /** True if the job was first seen in the DB within the last 24 hours. */
   isNew?: boolean;
+  /** True if the job was returned from the DB cache, not freshly scraped in this run. */
+  isStale?: boolean;
 }
 
 export interface ApplicationInterview {

@@ -28,6 +28,7 @@ import { JobFilterBar, type JobFilters, DEFAULT_JOB_FILTERS } from "@/components
 import { ErrorAlertList } from "@/components/ui/ErrorAlertList";
 import type { JobItem } from "@/types";
 import { useScrapeProgress } from "@/context/ScrapeProgressContext";
+import { ios } from "@/theme/theme";
 
 type JobResult = JobItem;
 
@@ -275,7 +276,14 @@ export default function SearchPage() {
           return false;
       }
       return true;
-    })
+    });
+
+  const freshJobs = filteredJobs
+    .filter((j) => !j.isStale)
+    .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+
+  const staleJobs = filteredJobs
+    .filter((j) => j.isStale)
     .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
 
   return (
@@ -404,6 +412,11 @@ export default function SearchPage() {
             {filteredJobs.length === jobs.length
               ? `${jobs.length} results`
               : `${filteredJobs.length} of ${jobs.length} results`}
+            {staleJobs.length > 0 && (
+              <Box component="span" sx={{ color: ios.label3, ml: 1 }}>
+                ({freshJobs.length} fresh · {staleJobs.length} cached)
+              </Box>
+            )}
           </Typography>
         </>
       )}
@@ -417,7 +430,7 @@ export default function SearchPage() {
       )}
 
       <Stack spacing={1.5}>
-        {filteredJobs.map((job) => {
+        {freshJobs.map((job) => {
           const isNew = newJobIdsRef.current.has(job.id);
           const delay = isNew
             ? Math.min((jobArrivalIndexRef.current.get(job.id) ?? 0) * 50, 800)
@@ -439,6 +452,28 @@ export default function SearchPage() {
           );
         })}
       </Stack>
+
+      {staleJobs.length > 0 && (
+        <>
+          <Box sx={{ mt: 3, mb: 1.5, display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box sx={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.08)" }} />
+            <Typography variant="caption" sx={{ color: ios.label3, fontWeight: 600, letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+              PREVIOUSLY FOUND ({staleJobs.length})
+            </Typography>
+            <Box sx={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.08)" }} />
+          </Box>
+          <Stack spacing={1.5}>
+            {staleJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                isToggling={togglingId === job.id}
+                onToggleFavourite={handleToggleFavourite}
+              />
+            ))}
+          </Stack>
+        </>
+      )}
     </Box>
   );
 }

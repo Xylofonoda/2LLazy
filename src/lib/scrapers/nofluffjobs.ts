@@ -1,164 +1,82 @@
 /**
- * NoFluffJobs scraper — uses their internal search API (POST).
- * URL: https://nofluffjobs.com/cz/jobs/search?keyword={query}&region=czech-republic
- * The site is a React SPA, so we use their JSON API endpoint instead of HTML scraping.
- * Job detail pages are fetched via Playwright to get the full description.
+ * NoFluffJobs scraper — uses Playwright to render the HTML search page.
+ *
+ * The old /api/search/posting endpoint is broken (returns 400 — API changed).
+ * NFJ uses tech-specific URLs:  https://nofluffjobs.com/cz/{Technology}?remote=true
+ * which redirect to the correct path and return actual job listings.
+ *
+ * We only scrape REMOTE jobs — most non-remote listings are based in Poland.
  */
 import { pwFetch } from "./playwright-browser";
 import { batchProcess } from "./utils";
+import { extractJobFromText } from "./extract";
 import { ScrapedJob } from "./types";
 import { extractRelevantJobsFromPage } from "@/lib/ai";
-import { Agent } from "undici";
 
 const BASE = "https://nofluffjobs.com";
-const agent = new Agent({ connect: { timeout: 30_000 } });
-
-const HEADERS = {
-  "Content-Type": "application/json",
-  Accept: "application/json, text/plain, */*",
-  "Accept-Language": "cs,en-US,en;q=0.9",
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  Origin: "https://nofluffjobs.com",
-  Referer: "https://nofluffjobs.com/cz/jobs/",
-  "sec-fetch-dest": "empty",
-  "sec-fetch-mode": "cors",
-  "sec-fetch-site": "same-origin",
-};
-
-interface NFJPosting {
-  id: string;
-  title: string;
-  name: string;
-  url: string;
-  company: { name: string };
-  location: { placeEn?: string; placePl?: string; place?: string; remote?: boolean };
-  salary?: { from?: number; to?: number; currency?: string; type?: string };
-  seniority?: string[];
-  technology?: string[];
-  categoryEn?: string;
-}
-
-interface NFJSearchResponse {
-  postings?: NFJPosting[];
-  totalCount?: number;
-}
-
-function formatNFJSalary(s: NFJPosting["salary"]): string | undefined {
-  if (!s) return undefined;
-  const currency = s.currency ?? "CZK";
-  const period = s.type === "b2b" ? " B2B" : s.type === "permanent" ? "/mo" : "";
-  if (s.from && s.to) return `${s.from.toLocaleString()} – ${s.to.toLocaleString()} ${currency}${period}`;
-  if (s.from) return `From ${s.from.toLocaleString()} ${currency}${period}`;
-  if (s.to) return `Up to ${s.to.toLocaleString()} ${currency}${period}`;
-  return undefined;
-}
-
-async function fetchWithRetry(url: string, body: object, retries = 3, delayMs = 1500): Promise<Response> {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: HEADERS,
-        body: JSON.stringify(body),
-        // @ts-expect-error undici dispatcher not in fetch type definitions
-        dispatcher: agent,
-      });
-      if (res.ok) return res;
-      const wait = res.status === 429 ? delayMs * attempt * 2 : delayMs * attempt;
-      if (attempt < retries) await new Promise((r) => setTimeout(r, wait));
-      else throw new Error(`HTTP ${res.status} for ${url}`);
-    } catch (err) {
-      if (attempt === retries) {
-        if (err instanceof Error) throw err;
-        throw new Error(`NoFluffJobs fetch failed: ${String(err)}`);
-      }
-      await new Promise((r) => setTimeout(r, delayMs * attempt));
-    }
-  }
-  throw new Error(`NoFluffJobs: all retries exhausted`);
-}
 
 export async function scrapeNoFluffJobs(
   query: string,
   skillLevel: string,
   deepSearch = false,
-  city = "",
+  _city = "",
 ): Promise<ScrapedJob[]> {
-  const seniorityMap: Record<string, string> = {
-    Junior: "junior",
-    Mid: "mid",
-    Senior: "senior",
-    Lead: "lead",
-  };
-  const seniority = seniorityMap[skillLevel];
-  const MAX_PAGES = deepSearch ? 4 : 2;
-  const pageSize = 20;
+  const MAX_PAGES = deepSearch ? 3 : 2;
   const jobs: ScrapedJob[] = [];
+  const seenUrls = new Set<string>();
 
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const criteria = [`keyword=${query}`, "region=cz"];
-    if (city) criteria.push(`city=${city}`);
-    if (seniority) criteria.push(`seniority=${seniority}`);
+    // Tech-specific URL gives accurate results; remote=true filters out Poland-only postings
+    const searchUrl =
+      `${BASE}/cz/${encodeURIComponent(query)}?remote=true` +
+      (page > 1 ? `&page=${page}` : "");
 
-    const searchBody = {
-      criteria: criteria.join(" "),
-      page,
-      pageSize,
-      salaryCurrency: "CZK",
-      salaryPeriod: "month",
-    };
-
-    let data: NFJSearchResponse;
+    let result: { text: string; links: Array<{ text: string; url: string }> };
     try {
-      const res = await fetchWithRetry(`${BASE}/api/search/posting`, searchBody);
-      data = await res.json() as NFJSearchResponse;
+      result = await pwFetch(searchUrl, "a[href*='/cz/job/']");
     } catch {
       break;
     }
 
-    const postings = data.postings ?? [];
-    if (postings.length === 0) break;
+    const { text: pageText, links } = result;
+    if (!pageText || pageText.length < 100) break;
 
-    // Build title+url pairs for GPT pre-filtering
-    const titleLinks = postings.map((p) => ({
-      text: p.name || p.title || "",
-      url: `${BASE}/cz/job/${p.url || p.id}`,
-    }));
-    const relevant = await extractRelevantJobsFromPage(query, skillLevel, "", titleLinks);
-    const relevantUrls = new Set(relevant.map((r) => r.url));
+    // Filter to only /cz/job/ links and dedupe
+    const jobLinks = links
+      .filter((l) => l.url.includes("/cz/job/"))
+      .filter((l) => {
+        if (seenUrls.has(l.url)) return false;
+        seenUrls.add(l.url);
+        return true;
+      });
 
-    // Build a lookup for API metadata (location, salary, workType)
-    const postingByUrl = new Map(
-      postings.map((p) => [`${BASE}/cz/job/${p.url || p.id}`, p]),
-    );
+    if (jobLinks.length === 0) break;
 
-    // Fetch full detail pages for each relevant job (SPA — needs Playwright)
-    const batchedJobs = await batchProcess(relevant, 5, async ({ title, url }) => {
+    // If page 2 has the exact same links as page 1, NFJ has no more pages
+    if (page > 1 && jobs.length > 0) {
+      const existingUrls = new Set(jobs.map((j) => j.sourceUrl));
+      const allSeen = jobLinks.every((l) => existingUrls.has(l.url));
+      if (allSeen) break;
+    }
+
+    const relevant = await extractRelevantJobsFromPage(query, skillLevel, pageText, jobLinks);
+    if (relevant.length === 0) break;
+
+    const batchedJobs = await batchProcess(relevant, 4, async ({ title, url }) => {
       try {
-        const p = postingByUrl.get(url);
-        const locationParts: string[] = [];
-        if (p?.location?.placeEn) locationParts.push(p.location.placeEn);
-        else if (p?.location?.place) locationParts.push(p.location.place);
-        const locationStr = locationParts.join(", ") || (p?.location?.remote ? "Remote" : "Czech Republic");
-        const workType = p?.location?.remote ? "Remote" : undefined;
-
-        // Fetch the actual detail page for a rich description
-        const { text: pageText } = await pwFetch(url, "[class*='description'], [class*='job-desc'], main");
-        // Build a rich description — combine page text with API metadata
-        const apiMeta = `${p?.categoryEn ? `Category: ${p.categoryEn}. ` : ""}Technologies: ${(p?.technology ?? []).join(", ")}.`;
-        const richDescription = pageText.length > 300
-          ? pageText.slice(0, 3500)
-          : `${title}. ${apiMeta} ${pageText}`.slice(0, 4000);
+        const { text } = await pwFetch(url, "[class*='description'], [class*='job-desc'], main");
+        const extracted = await extractJobFromText(text, { url, title, company: "", location: "Remote" });
+        if (!extracted.title) return null;
 
         return {
-          title: title,
-          company: p?.company?.name ?? "",
-          location: locationStr,
-          description: richDescription,
+          title: extracted.title,
+          company: extracted.company,
+          location: extracted.location || "Remote",
+          description: extracted.description,
           sourceUrl: url,
           source: "NOFLUFFJOBS" as const,
-          salary: formatNFJSalary(p?.salary),
-          workType,
+          salary: extracted.salary || undefined,
+          workType: "Remote",
         };
       } catch {
         return null;
@@ -169,14 +87,14 @@ export async function scrapeNoFluffJobs(
 
     if (deepSearch) {
       const { prisma } = await import("@/lib/prisma");
-      const urls = postings.map((p) => `${BASE}/cz/job/${p.url || p.id}`);
-      const existingCount = await prisma.jobPosting.count({
-        where: { sourceUrl: { in: urls } },
+      const pageUrls = relevant.map((j) => j.url);
+      const freshCount = await prisma.jobPosting.count({
+        where: { sourceUrl: { in: pageUrls }, scrapedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
       });
-      if (existingCount === urls.length) break;
+      if (freshCount === pageUrls.length) break;
     }
 
-    if (page < MAX_PAGES) await new Promise((r) => setTimeout(r, 600));
+    if (page < MAX_PAGES) await new Promise((r) => setTimeout(r, 800));
   }
 
   return jobs;

@@ -31,7 +31,7 @@ const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
 type SSEEvent =
   | { type: "progress"; site: string; message: string }
-  | { type: "job"; data: ScrapedJob & { id: string; favourited: boolean; similarity: number; isNew: boolean } }
+  | { type: "job"; data: ScrapedJob & { id: string; favourited: boolean; similarity: number; isNew: boolean; isStale?: boolean } }
   | { type: "scraperDone"; site: string; doneCount: number; total: number }
   | { type: "complete"; total: number }
   | { type: "error"; site: string; message: string };
@@ -227,6 +227,75 @@ export async function POST(req: NextRequest) {
           }
         }),
       );
+
+      await send({ type: "complete", total: emittedIds.size });
+
+      // ── Surface cached jobs that weren't scraped this run ──────────────
+      // Query all DB jobs with embeddings, skip already-emitted, rank by
+      // similarity to the query and emit above threshold as isStale: true.
+      try {
+        await send({ type: "progress", site: "Cache", message: "Loading cached results…" });
+        const cachedRows = await prisma.$queryRaw<Array<{
+          id: string;
+          title: string;
+          company: string;
+          location: string;
+          description: string;
+          sourceUrl: string;
+          source: string;
+          salary: string | null;
+          workType: string | null;
+          favourited: boolean;
+          embedding: string;
+          firstSeenAt: Date;
+          postedAt: Date | null;
+        }>>`
+          SELECT id, title, company, location, description, "sourceUrl",
+                 source::text as source, salary, "workType", "favourited",
+                 embedding::text as embedding, "firstSeenAt", "postedAt"
+          FROM "JobPosting"
+          WHERE embedding IS NOT NULL
+          LIMIT 500
+        `;
+
+        // Rank by similarity, cap at top 80 stale results
+        const ranked: Array<{ row: (typeof cachedRows)[0]; similarity: number }> = [];
+        for (const row of cachedRows) {
+          if (emittedIds.has(row.id)) continue;
+          try {
+            const emb = JSON.parse(row.embedding) as number[];
+            if (emb.length !== queryEmbedding.length) continue;
+            const similarity = cosineSimilarity(queryEmbedding, emb);
+            if (similarity >= SIMILARITY_THRESHOLD) ranked.push({ row, similarity });
+          } catch { /* malformed embedding */ }
+        }
+        ranked.sort((a, b) => b.similarity - a.similarity);
+
+        for (const { row, similarity } of ranked.slice(0, 80)) {
+          emittedIds.add(row.id);
+          await send({
+            type: "job",
+            data: {
+              id: row.id,
+              title: row.title,
+              company: row.company,
+              location: row.location,
+              description: row.description,
+              sourceUrl: row.sourceUrl,
+              source: row.source as ScrapedJob["source"],
+              salary: row.salary ?? undefined,
+              workType: row.workType ?? undefined,
+              postedAt: row.postedAt ?? undefined,
+              favourited: row.favourited,
+              similarity,
+              isNew: false,
+              isStale: true,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[scrape] Cache surfacing failed:", err);
+      }
 
       await send({ type: "complete", total: emittedIds.size });
     } catch (err) {
