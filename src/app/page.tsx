@@ -185,7 +185,7 @@ export default function SearchPage() {
               });
             } else if (event.type === "complete") {
               setScrapePercent(100);
-              setProgress(`Done — ${uniqueJobCountRef.current} jobs found`);
+              setProgress(uniqueJobCountRef.current === 0 ? "done-empty" : null);
               setScraping(false);
             } else if (event.type === "error") {
               setErrors((prev) => [...prev, `${event.site}: ${event.message}`]);
@@ -208,7 +208,7 @@ export default function SearchPage() {
             });
           } else if (event.type === "complete") {
             setScrapePercent(100);
-            setProgress(`Done — ${uniqueJobCountRef.current} jobs found`);
+            setProgress(uniqueJobCountRef.current === 0 ? "done-empty" : null);
             setScraping(false);
           }
         } catch { /* incomplete */ }
@@ -399,7 +399,7 @@ export default function SearchPage() {
         </Alert>
       )}
 
-      {!scraping && jobs.length === 0 && progress?.startsWith("Done") && (
+      {!scraping && jobs.length === 0 && progress === "done-empty" && (
         <Alert severity="warning" sx={{ mb: 3 }}>
           No jobs found. Try broader keywords, set skill level to <strong>Any</strong>, or enable <strong>Deep Search</strong>.
         </Alert>
