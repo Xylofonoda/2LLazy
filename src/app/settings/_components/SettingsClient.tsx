@@ -10,6 +10,7 @@ interface Props {
   uploadedFiles: UploadedFile[];
   aiHealth: { ok: boolean; missing: string[] };
   hasOpenAI: boolean;
+  hasCalendarAccess: boolean;
 }
 
 export function SettingsClient({
@@ -17,6 +18,7 @@ export function SettingsClient({
   uploadedFiles,
   aiHealth,
   hasOpenAI,
+  hasCalendarAccess,
 }: Props) {
   return (
     <Box>
@@ -29,7 +31,7 @@ export function SettingsClient({
         </Typography>
       </Box>
       <AiStatusCard hasOpenAI={hasOpenAI} aiHealth={aiHealth} />
-      <GoogleCalendarCard enabled={profile.googleCalendarSync} />
+      <GoogleCalendarCard enabled={profile.googleCalendarSync} hasCalendarAccess={hasCalendarAccess} />
       <UserProfileCard profile={profile} />
       <CvDocumentsCard uploadedFiles={uploadedFiles} />
     </Box>
