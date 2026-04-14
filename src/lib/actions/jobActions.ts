@@ -1,33 +1,40 @@
 "use server";
 
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { FAVOURITES_TAG } from "@/lib/data/favourites";
-import { APPLICATIONS_TAG } from "@/lib/data/applications";
+import { favouriteTag } from "@/lib/data/favourites";
+import { applicationTag } from "@/lib/data/applications";
+import { requireUserId } from "@/lib/auth/sessionManager";
 
 export async function toggleFavourite(jobId: string): Promise<void> {
-  const job = await prisma.jobPosting.findUniqueOrThrow({ where: { id: jobId } });
-  await prisma.jobPosting.update({
-    where: { id: jobId },
-    data: { favourited: !job.favourited },
+  const userId = await requireUserId();
+  const existing = await prisma.userFavourite.findUnique({
+    where: { userId_jobId: { userId, jobId } },
   });
-  updateTag(FAVOURITES_TAG);
+  if (existing) {
+    await prisma.userFavourite.delete({ where: { userId_jobId: { userId, jobId } } });
+  } else {
+    await prisma.userFavourite.create({ data: { userId, jobId } });
+  }
+  revalidateTag(favouriteTag(userId), "default");
   revalidatePath("/favourites");
   revalidatePath("/");
 }
 
 export async function trackJob(jobId: string): Promise<void> {
+  const userId = await requireUserId();
   const existing = await prisma.application.findFirst({
-    where: { jobId, status: { in: ["APPLIED", "PENDING"] } },
+    where: { userId, jobId, status: { in: ["APPLIED", "PENDING"] } },
   });
   if (existing) return;
 
   await prisma.application.create({
-    data: { jobId, status: "PENDING" },
+    data: { userId, jobId, status: "PENDING" },
   });
 
-  updateTag(APPLICATIONS_TAG);
+  revalidateTag(applicationTag(userId), "default");
   revalidatePath("/dashboard");
   revalidatePath("/");
 }
+
 

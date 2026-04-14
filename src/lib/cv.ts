@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
-export async function readCvText(): Promise<string> {
-  const doc = await prisma.cvDocument.findFirst({ orderBy: { uploadedAt: "desc" } });
+export async function readCvText(userId: string): Promise<string> {
+  const doc = await prisma.cvDocument.findFirst({
+    where: { userId },
+    orderBy: { uploadedAt: "desc" },
+  });
   if (!doc) return "";
   const ext = doc.originalName.split(".").pop()?.toLowerCase();
   const buf = Buffer.from(doc.data);
@@ -13,3 +16,4 @@ export async function readCvText(): Promise<string> {
   }
   return buf.toString("utf-8").replace(/[^\x20-\x7E\n]/g, " ");
 }
+

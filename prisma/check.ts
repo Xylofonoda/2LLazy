@@ -10,7 +10,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
   const jobs = await prisma.jobPosting.findMany({
-    select: { title: true, company: true, source: true, favourited: true, scrapedAt: true },
+    select: { title: true, company: true, source: true, scrapedAt: true },
     orderBy: { scrapedAt: "desc" },
     take: 50,
   });
@@ -20,7 +20,6 @@ async function main() {
     title: j.title.slice(0, 45),
     company: j.company.slice(0, 20),
     source: j.source,
-    fav: j.favourited,
     scrapedAt: j.scrapedAt.toISOString().slice(0, 16),
   })));
 

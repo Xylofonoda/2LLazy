@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import path from "path";
 import { randomUUID } from "crypto";
-import { SETTINGS_TAG } from "@/lib/data/settings";
+import { settingsTag } from "@/lib/data/settings";
+import { requireUserId } from "@/lib/auth/sessionManager";
 
 const ALLOWED_EXTENSIONS = new Set([".pdf", ".docx", ".doc", ".txt"]);
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -29,6 +30,7 @@ export async function uploadCvAction(
   _prevState: { error?: string; filename?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; filename?: string }> {
+  const userId = await requireUserId();
   const file = formData.get("file") as File | null;
   if (!file || !file.name) return { error: "No file provided" };
   if (file.size > MAX_FILE_SIZE) return { error: "File too large (max 10 MB)" };
@@ -45,21 +47,22 @@ export async function uploadCvAction(
   const safeName = `${randomUUID()}-${path.basename(file.name).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
 
   await prisma.cvDocument.create({
-    data: { originalName: safeName, data: buf, size: buf.length },
+    data: { userId, originalName: safeName, data: buf, size: buf.length },
   });
 
-  updateTag(SETTINGS_TAG);
+  revalidateTag(settingsTag(userId), "default");
   revalidatePath("/settings");
   return { filename: safeName };
 }
 
 export async function deleteUploadedFileAction(id: string): Promise<{ error?: string }> {
+  const userId = await requireUserId();
   try {
-    await prisma.cvDocument.delete({ where: { id } });
+    await prisma.cvDocument.delete({ where: { id, userId } });
   } catch {
     return { error: "File not found or could not be deleted." };
   }
-  updateTag(SETTINGS_TAG);
+  revalidateTag(settingsTag(userId), "default");
   revalidatePath("/settings");
   return {};
 }
@@ -72,13 +75,42 @@ export async function saveUserProfile(profile: {
   githubUrl?: string;
   coverLetterLanguage?: string;
 }): Promise<void> {
-  const existing = await prisma.userProfile.findFirst();
-  if (existing) {
-    await prisma.userProfile.update({ where: { id: existing.id }, data: profile });
-  } else {
-    await prisma.userProfile.create({ data: profile });
-  }
-  updateTag(SETTINGS_TAG);
+  const userId = await requireUserId();
+  await prisma.userProfile.upsert({
+    where: { userId },
+    update: profile,
+    create: { userId, ...profile },
+  });
+  revalidateTag(settingsTag(userId), "default");
   revalidatePath("/settings");
+}
+
+export async function toggleGoogleCalendarSync(enabled: boolean): Promise<void> {
+  const userId = await requireUserId();
+  await prisma.userProfile.upsert({
+    where: { userId },
+    update: { googleCalendarSync: enabled },
+    create: {
+      userId,
+      name: "",
+      email: "",
+      googleCalendarSync: enabled,
+    },
+  });
+  revalidateTag(settingsTag(userId), "default");
+  revalidatePath("/settings");
+}
+
+/**
+ * Returns true if the user's stored Google OAuth token includes the
+ * calendar.events scope (i.e. they have already granted it via incremental auth).
+ */
+export async function checkCalendarAccess(): Promise<boolean> {
+  const userId = await requireUserId();
+  const account = await prisma.account.findFirst({
+    where: { userId, provider: "google" },
+    select: { scope: true },
+  });
+  return (account?.scope ?? "").includes("calendar");
 }
 

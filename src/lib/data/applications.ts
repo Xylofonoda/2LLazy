@@ -28,15 +28,15 @@ function buildJobWhere(filters?: Omit<ApplicationFilters, "status">): Prisma.Job
   return Object.keys(clause).length > 0 ? clause : undefined;
 }
 
-// Cache tag used by all application-related data so server actions can
-// invalidate everything with a single revalidateTag("applications") call.
 export const APPLICATIONS_TAG = "applications";
+export const applicationTag = (userId: string) => `${APPLICATIONS_TAG}:${userId}`;
 
-async function _getApplications(filters?: ApplicationFilters): Promise<Application[]> {
+async function _getApplications(userId: string, filters?: ApplicationFilters): Promise<Application[]> {
   const { status, ...rest } = filters ?? {};
   const job = buildJobWhere(rest);
   const apps = await prisma.application.findMany({
     where: {
+      userId,
       ...(status && status !== "ALL" ? { status: status as ApplicationStatus } : {}),
       ...(job ? { job } : {}),
     },
@@ -74,9 +74,9 @@ async function _getApplications(filters?: ApplicationFilters): Promise<Applicati
   }));
 }
 
-async function _getApplicationSources(): Promise<string[]> {
+async function _getApplicationSources(userId: string): Promise<string[]> {
   const rows = await prisma.jobPosting.findMany({
-    where: { applications: { some: {} } },
+    where: { applications: { some: { userId } } },
     distinct: ["source"],
     select: { source: true },
     orderBy: { source: "asc" },
@@ -85,12 +85,13 @@ async function _getApplicationSources(): Promise<string[]> {
 }
 
 async function _getApplicationStatusCounts(
+  userId: string,
   filters?: Omit<ApplicationFilters, "status">,
 ): Promise<Record<string, number>> {
   const job = buildJobWhere(filters);
   const groups = await prisma.application.groupBy({
     by: ["status"],
-    where: job ? { job } : undefined,
+    where: { userId, ...(job ? { job } : {}) },
     _count: true,
   });
   const counts: Record<string, number> = Object.fromEntries(
@@ -102,20 +103,27 @@ async function _getApplicationStatusCounts(
   return counts;
 }
 
-// Cached wrappers — results stored in Next.js Data Cache (backed by Netlify blob
-// storage in production). Each unique set of arguments is a separate cache entry.
-// All entries share the "applications" tag so a single revalidateTag invalidates all.
-export const getApplications = unstable_cache(_getApplications, ["get-applications"], {
-  revalidate: 60,
-  tags: [APPLICATIONS_TAG],
-});
+export function getApplications(userId: string, filters?: ApplicationFilters) {
+  return unstable_cache(
+    () => _getApplications(userId, filters),
+    ["get-applications", userId, JSON.stringify(filters ?? {})],
+    { revalidate: 60, tags: [applicationTag(userId)] },
+  )();
+}
 
-export const getApplicationSources = unstable_cache(_getApplicationSources, ["get-application-sources"], {
-  revalidate: 60,
-  tags: [APPLICATIONS_TAG],
-});
+export function getApplicationSources(userId: string) {
+  return unstable_cache(
+    () => _getApplicationSources(userId),
+    ["get-application-sources", userId],
+    { revalidate: 60, tags: [applicationTag(userId)] },
+  )();
+}
 
-export const getApplicationStatusCounts = unstable_cache(_getApplicationStatusCounts, ["get-application-status-counts"], {
-  revalidate: 60,
-  tags: [APPLICATIONS_TAG],
-});
+export function getApplicationStatusCounts(userId: string, filters?: Omit<ApplicationFilters, "status">) {
+  return unstable_cache(
+    () => _getApplicationStatusCounts(userId, filters),
+    ["get-application-status-counts", userId, JSON.stringify(filters ?? {})],
+    { revalidate: 60, tags: [applicationTag(userId)] },
+  )();
+}
+

@@ -6,6 +6,8 @@ import {
 import type { ApplicationFilters } from "@/lib/data/applications";
 import { DashboardClient } from "./_components/DashboardClient";
 import type { DashboardFilters } from "@/components/dashboard/DashboardFilterBar";
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
 
 // Revalidate every 60 s; server actions call revalidatePath so mutations are instant
 export const revalidate = 60;
@@ -15,6 +17,9 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<Record<string, string>>;
 }) {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const userId = session.user.id;
   const sp = await searchParams;
   const nonStatusFilters: Omit<ApplicationFilters, "status"> = {
     source: sp.source,
@@ -22,9 +27,9 @@ export default async function DashboardPage({
     hasSalary: sp.hasSalary === "true",
   };
   const [applications, sources, statusCounts] = await Promise.all([
-    getApplications({ status: sp.status, ...nonStatusFilters }),
-    getApplicationSources(),
-    getApplicationStatusCounts(nonStatusFilters),
+    getApplications(userId, { status: sp.status, ...nonStatusFilters }),
+    getApplicationSources(userId),
+    getApplicationStatusCounts(userId, nonStatusFilters),
   ]);
   const currentFilters: DashboardFilters = {
     status: sp.status ?? "ALL",

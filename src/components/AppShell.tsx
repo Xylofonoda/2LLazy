@@ -8,6 +8,7 @@ import {
   ListItemIcon,
   ListItemText,
   Typography,
+  Avatar,
   alpha,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
@@ -20,7 +21,7 @@ import BoltIcon from "@mui/icons-material/Bolt";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { logoutAction } from "@/lib/actions/authActions";
+import { useSession, signOut } from "next-auth/react";
 import { ios } from "@/theme/theme";
 import { useScrapeProgress } from "@/context/ScrapeProgressContext";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -29,17 +30,18 @@ import Tooltip from "@mui/material/Tooltip";
 const DRAWER_WIDTH = 236;
 
 const NAV_ITEMS = [
-  { label: "Search Jobs",  href: "/",          icon: <SearchIcon fontSize="small" /> },
-  { label: "Favourites",   href: "/favourites", icon: <BookmarkIcon fontSize="small" /> },
-  { label: "Dashboard",    href: "/dashboard",  icon: <DashboardIcon fontSize="small" /> },
-  { label: "Stats",        href: "/stats",      icon: <BarChartIcon fontSize="small" /> },
-  { label: "Interviews",   href: "/interviews", icon: <CalendarMonthIcon fontSize="small" /> },
-  { label: "Settings",     href: "/settings",   icon: <SettingsIcon fontSize="small" /> },
+  { label: "Search Jobs", href: "/", icon: <SearchIcon fontSize="small" /> },
+  { label: "Favourites", href: "/favourites", icon: <BookmarkIcon fontSize="small" /> },
+  { label: "Dashboard", href: "/dashboard", icon: <DashboardIcon fontSize="small" /> },
+  { label: "Stats", href: "/stats", icon: <BarChartIcon fontSize="small" /> },
+  { label: "Interviews", href: "/interviews", icon: <CalendarMonthIcon fontSize="small" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon fontSize="small" /> },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { scraping, scrapePercent } = useScrapeProgress();
+  const { data: session } = useSession();
 
   // Login page: render without the shell
   if (pathname.startsWith("/login")) {
@@ -167,11 +169,33 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </List>
 
-        {/* Logout */}
+        {/* User info + Logout */}
         <Box sx={{ p: 1.5, pt: 0 }}>
           <Box sx={{ height: "1px", background: ios.separator, mb: 1.5 }} />
+          {session?.user && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 0.5, mb: 1 }}>
+              <Avatar
+                src={session.user.image ?? undefined}
+                alt={session.user.name ?? "User"}
+                sx={{ width: 32, height: 32, fontSize: 13 }}
+              >
+                {session.user.name?.[0]?.toUpperCase()}
+              </Avatar>
+              <Typography sx={{
+                color: "rgba(235,235,245,0.75)",
+                fontSize: 13,
+                fontWeight: 500,
+                letterSpacing: "-0.01em",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}>
+                {session.user.name}
+              </Typography>
+            </Box>
+          )}
           <ListItemButton
-            onClick={() => logoutAction()}
+            onClick={() => signOut({ callbackUrl: "/login" })}
             sx={{
               borderRadius: "12px",
               py: 1.1,

@@ -2,6 +2,8 @@ import { getFavourites, getFavouriteSources } from "@/lib/data/favourites";
 import type { FavouriteFilters } from "@/lib/data/favourites";
 import { FavouritesClient } from "./_components/FavouritesClient";
 import type { JobFilters } from "@/components/jobs/JobFilterBar";
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
 
 // Revalidate every 60 s; server actions call revalidatePath so mutations are instant
 export const revalidate = 60;
@@ -11,6 +13,9 @@ export default async function FavouritesPage({
 }: {
   searchParams: Promise<Record<string, string>>;
 }) {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const userId = session.user.id;
   const sp = await searchParams;
   const filters: FavouriteFilters = {
     source: sp.source,
@@ -18,8 +23,8 @@ export default async function FavouritesPage({
     hasSalary: sp.hasSalary === "true",
   };
   const [jobs, sources] = await Promise.all([
-    getFavourites(filters),
-    getFavouriteSources(),
+    getFavourites(userId, filters),
+    getFavouriteSources(userId),
   ]);
   const currentFilters: JobFilters = {
     source: sp.source ?? "ALL",

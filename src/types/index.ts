@@ -155,4 +155,5 @@ export interface UserProfile {
   linkedInUrl: string;
   githubUrl: string;
   coverLetterLanguage: string;
+  googleCalendarSync: boolean;
 }

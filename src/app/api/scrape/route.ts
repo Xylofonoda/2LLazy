@@ -10,6 +10,7 @@ import { scrapeJobsCz } from "@/lib/scrapers/jobscz";
 import { scrapeJooble } from "@/lib/scrapers/jooble";
 import { ScrapedJob } from "@/lib/scrapers/types";
 import { cosineSimilarity } from "@/lib/similarity";
+import { auth } from "@/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -40,6 +41,12 @@ function sseChunk(event: SSEEvent): string {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+  }
+  const userId = session.user.id;
+
   // Rate limiting
   const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "unknown";
   const last = rateMap.get(ip) ?? 0;
@@ -96,6 +103,12 @@ export async function POST(req: NextRequest) {
       const SIMILARITY_THRESHOLD = 0.30;
       const MAX_PER_SOURCE = deepSearch ? Infinity : 20;
 
+      // Pre-load user's favourited job IDs for this session
+      const userFavouriteIds = new Set(
+        (await prisma.userFavourite.findMany({ where: { userId }, select: { jobId: true } }))
+          .map((f) => f.jobId)
+      );
+
       await Promise.allSettled(
         scrapers.map(async (scraper) => {
           await send({ type: "progress", site: scraper.name, message: `Scraping ${scraper.name}…` });
@@ -109,15 +122,14 @@ export async function POST(req: NextRequest) {
               sourceUrl: string;
               embedding: string | null;
               scrapedAt: Date;
-              favourited: boolean;
               firstSeenAt: Date | null;
             }>>`
-              SELECT id, "sourceUrl", embedding::text as embedding, "scrapedAt", "favourited", "firstSeenAt"
+              SELECT id, "sourceUrl", embedding::text as embedding, "scrapedAt", "firstSeenAt"
               FROM "JobPosting"
               WHERE "sourceUrl" = ANY(${sourceUrls})
             `;
 
-            type ExistingRecord = { id: string; sourceUrl: string; embedding: number[] | null; scrapedAt: Date; favourited: boolean; firstSeenAt: Date | null };
+            type ExistingRecord = { id: string; sourceUrl: string; embedding: number[] | null; scrapedAt: Date; firstSeenAt: Date | null };
             const existingMap = new Map<string, ExistingRecord>();
             for (const r of existingRecords) {
               existingMap.set(r.sourceUrl, {
@@ -152,7 +164,7 @@ export async function POST(req: NextRequest) {
                     if (existing?.embedding && ageHours < 24 && dimensionMatch) {
                       embedding = storedEmbedding!;
                       id = existing.id;
-                      favourited = existing.favourited;
+                      favourited = userFavouriteIds.has(existing.id);
                       isNew = existing.firstSeenAt
                         ? existing.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS
                         : false;
@@ -162,8 +174,8 @@ export async function POST(req: NextRequest) {
 
                       const newId = crypto.randomUUID().replace(/-/g, "");
                       await prisma.$executeRaw`
-                        INSERT INTO "JobPosting" (id, title, company, location, description, "sourceUrl", source, salary, "workType", "postedAt", embedding, "scrapedAt", "firstSeenAt", "favourited")
-                        VALUES (${newId}, ${job.title}, ${job.company}, ${job.location ?? "Remote"}, ${job.description}, ${job.sourceUrl}, ${job.source}::"JobSource", ${job.salary ?? null}, ${job.workType ?? null}, ${job.postedAt ?? null}, ${JSON.stringify(embedding)}::vector, NOW(), NOW(), false)
+                        INSERT INTO "JobPosting" (id, title, company, location, description, "sourceUrl", source, salary, "workType", "postedAt", embedding, "scrapedAt", "firstSeenAt")
+                        VALUES (${newId}, ${job.title}, ${job.company}, ${job.location ?? "Remote"}, ${job.description}, ${job.sourceUrl}, ${job.source}::"JobSource", ${job.salary ?? null}, ${job.workType ?? null}, ${job.postedAt ?? null}, ${JSON.stringify(embedding)}::vector, NOW(), NOW())
                         ON CONFLICT ("sourceUrl") DO UPDATE SET
                           title = EXCLUDED.title,
                           description = EXCLUDED.description,
@@ -173,7 +185,7 @@ export async function POST(req: NextRequest) {
                       `;
                       const saved = await prisma.jobPosting.findUniqueOrThrow({ where: { sourceUrl: job.sourceUrl } });
                       id = saved.id;
-                      favourited = saved.favourited;
+                      favourited = userFavouriteIds.has(id);
                       isNew = saved.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS;
                     }
 
@@ -245,13 +257,12 @@ export async function POST(req: NextRequest) {
           source: string;
           salary: string | null;
           workType: string | null;
-          favourited: boolean;
           embedding: string;
           firstSeenAt: Date;
           postedAt: Date | null;
         }>>`
           SELECT id, title, company, location, description, "sourceUrl",
-                 source::text as source, salary, "workType", "favourited",
+                 source::text as source, salary, "workType",
                  embedding::text as embedding, "firstSeenAt", "postedAt"
           FROM "JobPosting"
           WHERE embedding IS NOT NULL
@@ -286,7 +297,7 @@ export async function POST(req: NextRequest) {
               salary: row.salary ?? undefined,
               workType: row.workType ?? undefined,
               postedAt: row.postedAt ?? undefined,
-              favourited: row.favourited,
+              favourited: userFavouriteIds.has(row.id),
               similarity,
               isNew: false,
               isStale: true,

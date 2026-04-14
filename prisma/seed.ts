@@ -27,6 +27,19 @@ Daniel`;
 async function main() {
   console.log("🌱 Seeding demo data into Neon...\n");
 
+  // Resolve userId — pass SEED_USER_ID env var or use the first user in the DB
+  let userId: string | undefined = process.env.SEED_USER_ID;
+  if (!userId) {
+    const firstUser = await prisma.user.findFirst({ select: { id: true } });
+    userId = firstUser?.id;
+  }
+  if (!userId) {
+    console.log("⚠️  No user found. Log in via Google OAuth first, then re-run the seed.");
+    console.log("   Or set SEED_USER_ID=<your-user-id> in .env");
+    return;
+  }
+  console.log(`👤 Seeding for userId: ${userId}\n`);
+
   // Step 1: Favourite 5 of the real scraped jobs
   const titlesToFavourite = [
     "Senior Frontend Engineer, React.js",
@@ -40,7 +53,11 @@ async function main() {
   for (const title of titlesToFavourite) {
     const job = await prisma.jobPosting.findFirst({ where: { title: { contains: title } } });
     if (job) {
-      await prisma.jobPosting.update({ where: { id: job.id }, data: { favourited: true } });
+      await prisma.userFavourite.upsert({
+        where: { userId_jobId: { userId, jobId: job.id } },
+        create: { userId, jobId: job.id },
+        update: {},
+      });
       favouritedIds.push(job.id);
       console.log(`⭐ Favourited: ${job.title} @ ${job.company}`);
     }
@@ -56,10 +73,10 @@ async function main() {
   const firstJob = await prisma.jobPosting.findUnique({ where: { id: firstJobId } });
 
   let coverLetterId: string | undefined;
-  const existingCL = await prisma.coverLetter.findFirst({ where: { jobId: firstJobId } });
+  const existingCL = await prisma.coverLetter.findFirst({ where: { jobId: firstJobId, userId } });
   if (!existingCL) {
     const cl = await prisma.coverLetter.create({
-      data: { jobId: firstJobId, content: DEMO_COVER_LETTER, generatedByAI: true },
+      data: { userId, jobId: firstJobId, content: DEMO_COVER_LETTER, generatedByAI: true },
     });
     coverLetterId = cl.id;
     console.log(`✅ Cover letter created for: ${firstJob?.title}`);
@@ -80,10 +97,11 @@ async function main() {
     const jobId = favouritedIds[idx];
     if (!jobId) continue;
     const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
-    const existing = await prisma.application.findFirst({ where: { jobId } });
+    const existing = await prisma.application.findFirst({ where: { jobId, userId } });
     if (!existing) {
       await prisma.application.create({
         data: {
+          userId,
           jobId,
           status,
           appliedAt,
@@ -98,7 +116,7 @@ async function main() {
 
   // Step 4: Add an interview for the INTERVIEW application
   const interviewApp = await prisma.application.findFirst({
-    where: { jobId: favouritedIds[0], status: ApplicationStatus.INTERVIEW },
+    where: { jobId: favouritedIds[0], status: ApplicationStatus.INTERVIEW, userId },
   });
   if (interviewApp) {
     const existingInterview = await prisma.interview.findUnique({

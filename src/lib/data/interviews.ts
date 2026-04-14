@@ -3,8 +3,10 @@ import { prisma } from "@/lib/prisma";
 import type { CalendarEntry } from "@/types";
 
 export const INTERVIEWS_TAG = "interviews";
+export const interviewTag = (userId: string) => `${INTERVIEWS_TAG}:${userId}`;
 
 async function _getCalendarEntriesForMonth(
+  userId: string,
   month: number,
   year: number,
 ): Promise<CalendarEntry[]> {
@@ -13,12 +15,15 @@ async function _getCalendarEntriesForMonth(
 
   const [interviews, events] = await Promise.all([
     prisma.interview.findMany({
-      where: { scheduledAt: { gte: start, lt: end } },
+      where: {
+        scheduledAt: { gte: start, lt: end },
+        application: { userId },
+      },
       include: { application: { include: { job: true } } },
       orderBy: { scheduledAt: "asc" },
     }),
     prisma.calendarEvent.findMany({
-      where: { scheduledAt: { gte: start, lt: end } },
+      where: { userId, scheduledAt: { gte: start, lt: end } },
       orderBy: { scheduledAt: "asc" },
     }),
   ]);
@@ -47,9 +52,12 @@ async function _getCalendarEntriesForMonth(
   );
 }
 
-export const getCalendarEntriesForMonth = unstable_cache(
-  _getCalendarEntriesForMonth,
-  ["get-calendar-entries"],
-  { revalidate: 60, tags: [INTERVIEWS_TAG] },
-);
+export function getCalendarEntriesForMonth(userId: string, month: number, year: number) {
+  return unstable_cache(
+    () => _getCalendarEntriesForMonth(userId, month, year),
+    ["get-calendar-entries", userId, String(month), String(year)],
+    { revalidate: 60, tags: [interviewTag(userId)] },
+  )();
+}
+
 

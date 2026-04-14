@@ -3,16 +3,17 @@ import { prisma } from "@/lib/prisma";
 import type { UploadedFile, UserProfile } from "@/types";
 
 export const SETTINGS_TAG = "settings";
+export const settingsTag = (userId: string) => `${SETTINGS_TAG}:${userId}`;
 
-async function _getSettingsData(): Promise<{
+async function _getSettingsData(userId: string): Promise<{
   profile: UserProfile;
   uploadedFiles: UploadedFile[];
   aiHealth: { ok: boolean; missing: string[] };
   hasOpenAI: boolean;
 }> {
   const [dbProfile, dbFiles] = await Promise.all([
-    prisma.userProfile.findFirst(),
-    prisma.cvDocument.findMany({ orderBy: { uploadedAt: "desc" }, select: { id: true, originalName: true, size: true, uploadedAt: true } }),
+    prisma.userProfile.findUnique({ where: { userId } }),
+    prisma.cvDocument.findMany({ where: { userId }, orderBy: { uploadedAt: "desc" }, select: { id: true, originalName: true, size: true, uploadedAt: true } }),
   ]);
 
   const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
@@ -24,6 +25,7 @@ async function _getSettingsData(): Promise<{
     linkedInUrl: dbProfile?.linkedInUrl ?? "",
     githubUrl: dbProfile?.githubUrl ?? "",
     coverLetterLanguage: dbProfile?.coverLetterLanguage ?? "English",
+    googleCalendarSync: dbProfile?.googleCalendarSync ?? false,
   };
 
   const uploadedFiles: UploadedFile[] = dbFiles.map((f) => ({
@@ -38,7 +40,11 @@ async function _getSettingsData(): Promise<{
   return { profile, uploadedFiles, aiHealth, hasOpenAI };
 }
 
-export const getSettingsData = unstable_cache(_getSettingsData, ["get-settings"], {
-  revalidate: 300,
-  tags: [SETTINGS_TAG],
-});
+export function getSettingsData(userId: string) {
+  return unstable_cache(
+    () => _getSettingsData(userId),
+    ["get-settings", userId],
+    { revalidate: 300, tags: [settingsTag(userId)] },
+  )();
+}
+

@@ -19,6 +19,7 @@ enum JobSource {
   NOFLUFFJOBS
   JOBSCZ
   JOOBLE
+  GLASSDOOR
 }
 
 enum ApplicationStatus {
@@ -30,8 +31,85 @@ enum ApplicationStatus {
   FAILED
 }
 
+// ── NextAuth models ────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  // App data
+  applications   Application[]
+  coverLetters   CoverLetter[]
+  calendarEvents CalendarEvent[]
+  cvDocuments    CvDocument[]
+  userProfile    UserProfile?
+  favourites     UserFavourite[]
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+// ── Per-user favourites (replaces `favourited` field on JobPosting) ────────────
+
+model UserFavourite {
+  userId    String
+  jobId     String
+  createdAt DateTime @default(now())
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@id([userId, jobId])
+}
+
+// ── App models ─────────────────────────────────────────────────────────────────
+
 model UserProfile {
   id                  String   @id @default(cuid())
+  userId              String   @unique
   name                String
   email               String
   phone               String?
@@ -39,33 +117,38 @@ model UserProfile {
   linkedInUrl         String?
   githubUrl           String?
   coverLetterLanguage String   @default("English")
+  googleCalendarSync  Boolean  @default(false)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model JobPosting {
-  id           String                        @id @default(cuid())
+  id           String                       @id @default(cuid())
   title        String
   company      String
   location     String?
-  description  String                        @db.Text
-  sourceUrl    String                        @unique
+  description  String                       @db.Text
+  sourceUrl    String                       @unique
   source       JobSource
   salary       String?
   workType     String?
   postedAt     DateTime?
-  scrapedAt    DateTime                      @default(now())
-  firstSeenAt  DateTime                      @default(now())
+  scrapedAt    DateTime                     @default(now())
+  firstSeenAt  DateTime                     @default(now())
   embedding    Unsupported("vector(1536)")?
-  favourited   Boolean                       @default(false)
   applications Application[]
   coverLetters CoverLetter[]
+  favouritedBy UserFavourite[]
 }
 
 model Application {
   id            String            @id @default(cuid())
+  userId        String
   jobId         String
   job           JobPosting        @relation(fields: [jobId], references: [id])
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   status        ApplicationStatus @default(PENDING)
   appliedAt     DateTime?
   errorMessage  String?           @db.Text
@@ -79,8 +162,10 @@ model Application {
 
 model CoverLetter {
   id            String        @id @default(cuid())
+  userId        String
   jobId         String
   job           JobPosting    @relation(fields: [jobId], references: [id])
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   content       String        @db.Text
   generatedByAI Boolean       @default(false)
   createdAt     DateTime      @default(now())
@@ -88,31 +173,39 @@ model CoverLetter {
 }
 
 model Interview {
-  id              String      @id @default(cuid())
-  applicationId   String      @unique
-  application     Application @relation(fields: [applicationId], references: [id])
-  scheduledAt     DateTime
-  durationMinutes Int         @default(60)
-  timezone        String      @default("UTC")
-  notes           String?     @db.Text
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                    String      @id @default(cuid())
+  applicationId         String      @unique
+  application           Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  scheduledAt           DateTime
+  durationMinutes       Int         @default(60)
+  timezone              String      @default("UTC")
+  notes                 String?     @db.Text
+  googleCalendarEventId String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
 }
 
 model CalendarEvent {
-  id              String   @id @default(cuid())
-  title           String
-  scheduledAt     DateTime
-  durationMinutes Int      @default(60)
-  notes           String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  userId                String
+  title                 String
+  scheduledAt           DateTime
+  durationMinutes       Int      @default(60)
+  notes                 String?  @db.Text
+  googleCalendarEventId String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CvDocument {
   id           String   @id @default(cuid())
+  userId       String
   originalName String
   data         Bytes
   size         Int
   uploadedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

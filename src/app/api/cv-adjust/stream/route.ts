@@ -2,11 +2,16 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { readCvText } from "@/lib/cv";
 import { ChatOpenAI } from "@langchain/openai";
+import { auth } from "@/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
+  const userId = session.user.id;
+
   const body = await req.json().catch(() => ({}));
   const { jobId } = body as { jobId?: string };
 
@@ -17,7 +22,7 @@ export async function POST(req: NextRequest) {
   const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
   if (!job) return new Response("Job not found", { status: 404 });
 
-  const cvText = await readCvText().catch(() => "");
+  const cvText = await readCvText(userId).catch(() => "");
   if (!cvText) {
     return new Response(
       `data: ${JSON.stringify({ error: "No CV uploaded. Please upload your CV in Settings first." })}\n\n`,

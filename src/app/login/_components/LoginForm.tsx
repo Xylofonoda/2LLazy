@@ -1,34 +1,15 @@
 "use client";
 
-import { useFormStatus } from "react-dom";
 import {
   Box,
   Button,
-  CircularProgress,
-  TextField,
   Typography,
-  Alert,
   alpha,
 } from "@mui/material";
 import BoltIcon from "@mui/icons-material/Bolt";
-import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import { loginAction } from "@/lib/actions/authActions";
+import GoogleIcon from "@mui/icons-material/Google";
+import { signIn } from "next-auth/react";
 import { ios } from "@/theme/theme";
-
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button
-      type="submit"
-      variant="contained"
-      disabled={pending}
-      fullWidth
-      sx={{ mt: 0.5, py: 1.1, fontSize: "0.9375rem" }}
-    >
-      {pending ? <CircularProgress size={20} color="inherit" /> : "Sign In"}
-    </Button>
-  );
-}
 
 export function LoginForm({ error }: { error?: string }) {
   return (
@@ -44,8 +25,6 @@ export function LoginForm({ error }: { error?: string }) {
       }}
     >
       <Box
-        component="form"
-        action={loginAction}
         sx={{
           p: 4,
           background: "rgba(28,28,30,0.92)",
@@ -89,30 +68,32 @@ export function LoginForm({ error }: { error?: string }) {
         {/* Divider */}
         <Box sx={{ height: "1px", background: ios.separator }} />
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <LockOutlinedIcon sx={{ fontSize: 14, color: ios.label3 }} />
-          <Typography variant="body2" sx={{ color: ios.label2, fontSize: 13 }}>
-            Enter your password to continue
-          </Typography>
-        </Box>
+        <Typography sx={{ color: ios.label2, fontSize: 13, textAlign: "center" }}>
+          Sign in to access your personal job tracker workspace.
+        </Typography>
 
         {error && (
-          <Alert severity="error" sx={{ py: 0.5 }}>
-            Invalid password. Please try again.
-          </Alert>
+          <Typography sx={{ color: "#ff453a", fontSize: 13, textAlign: "center" }}>
+            Sign-in failed. Please try again.
+          </Typography>
         )}
 
-        <TextField
-          label="Password"
-          name="password"
-          type="password"
-          autoFocus
-          required
-          size="small"
+        <Button
+          variant="contained"
           fullWidth
-        />
-
-        <SubmitButton />
+          onClick={() => signIn("google", { callbackUrl: "/" })}
+          startIcon={<GoogleIcon />}
+          sx={{
+            mt: 0.5,
+            py: 1.1,
+            fontSize: "0.9375rem",
+            background: "#fff",
+            color: "#1f1f1f",
+            "&:hover": { background: "#f5f5f5" },
+          }}
+        >
+          Continue with Google
+        </Button>
       </Box>
     </Box>
   );

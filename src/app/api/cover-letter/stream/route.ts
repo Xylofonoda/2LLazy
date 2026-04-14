@@ -1,15 +1,20 @@
 import { NextRequest } from "next/server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { APPLICATIONS_TAG } from "@/lib/data/applications";
-import { FAVOURITES_TAG } from "@/lib/data/favourites";
+import { applicationTag } from "@/lib/data/applications";
+import { favouriteTag } from "@/lib/data/favourites";
 import { generateCoverLetterStream } from "@/lib/ai";
 import { readCvText } from "@/lib/cv";
+import { auth } from "@/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
+  const userId = session.user.id;
+
   const body = await req.json().catch(() => ({}));
   const jobId: string = body.jobId ?? "";
 
@@ -22,12 +27,13 @@ export async function POST(req: NextRequest) {
     return new Response("Job not found", { status: 404 });
   }
 
-  const userProfile = await prisma.userProfile.findFirst({
+  const userProfile = await prisma.userProfile.findUnique({
+    where: { userId },
     select: { coverLetterLanguage: true },
   });
   const language = userProfile?.coverLetterLanguage ?? "English";
 
-  const cvText = await readCvText().catch(() => "");
+  const cvText = await readCvText(userId).catch(() => "");
 
   const encoder = new TextEncoder();
   const transform = new TransformStream<Uint8Array, Uint8Array>();
@@ -52,10 +58,10 @@ export async function POST(req: NextRequest) {
 
       // Persist cover letter, link it to the application (if one exists), and auto-favourite
       const coverLetter = await prisma.coverLetter.create({
-        data: { jobId, content: fullContent, generatedByAI: true },
+        data: { userId, jobId, content: fullContent, generatedByAI: true },
       });
 
-      const application = await prisma.application.findFirst({ where: { jobId } });
+      const application = await prisma.application.findFirst({ where: { userId, jobId } });
 
       await prisma.$transaction([
         ...(application
@@ -64,17 +70,17 @@ export async function POST(req: NextRequest) {
             data: { coverLetterId: coverLetter.id },
           })]
           : []),
-        prisma.jobPosting.update({
-          where: { id: jobId },
-          data: { favourited: true },
+        prisma.userFavourite.upsert({
+          where: { userId_jobId: { userId, jobId } },
+          create: { userId, jobId },
+          update: {},
         }),
       ]);
 
       await send({ done: true });
 
-      // Invalidate data cache and page cache for pages that display cover letters / favourites
-      revalidateTag(APPLICATIONS_TAG, "max");
-      revalidateTag(FAVOURITES_TAG, "max");
+      revalidateTag(applicationTag(userId), "default");
+      revalidateTag(favouriteTag(userId), "default");
       revalidatePath("/dashboard");
       revalidatePath("/favourites");
     } catch (err) {

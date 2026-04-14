@@ -2,6 +2,7 @@ import { Box, Typography } from "@mui/material";
 import { AiStatusCard } from "./AiStatusCard";
 import { UserProfileCard } from "./UserProfileCard";
 import { CvDocumentsCard } from "./CvDocumentsCard";
+import { GoogleCalendarCard } from "./GoogleCalendarCard";
 import type { UploadedFile, UserProfile } from "@/types";
 
 interface Props {
@@ -28,6 +29,7 @@ export function SettingsClient({
         </Typography>
       </Box>
       <AiStatusCard hasOpenAI={hasOpenAI} aiHealth={aiHealth} />
+      <GoogleCalendarCard enabled={profile.googleCalendarSync} />
       <UserProfileCard profile={profile} />
       <CvDocumentsCard uploadedFiles={uploadedFiles} />
     </Box>

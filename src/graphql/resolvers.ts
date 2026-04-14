@@ -3,12 +3,19 @@ import { generateEmbedding, generateCoverLetter, checkOllamaHealth } from "@/lib
 import { readCvText } from "@/lib/cv";
 import { cosineSimilarity } from "@/lib/similarity";
 import { ApplicationStatus } from "@prisma/client";
+import { revalidateTag, revalidatePath } from "next/cache";
+import { favouriteTag } from "@/lib/data/favourites";
+
+export interface GqlContext {
+  userId: string;
+}
 
 export const resolvers = {
   Query: {
     searchJobs: async (
       _: unknown,
-      { query, skillLevel = "", limit = 20 }: { query: string; skillLevel?: string; limit?: number }
+      { query, skillLevel = "", limit = 20 }: { query: string; skillLevel?: string; limit?: number },
+      { userId }: GqlContext
     ) => {
       const text = `${query} ${skillLevel}`.trim();
       const queryEmbedding = await generateEmbedding(text);
@@ -16,21 +23,27 @@ export const resolvers = {
       const allJobs = await prisma.$queryRaw<Array<{
         id: string; title: string; company: string; location: string | null;
         sourceUrl: string; source: string; salary: string | null;
-        postedAt: Date | null; scrapedAt: Date; favourited: boolean;
+        postedAt: Date | null; scrapedAt: Date;
         embedding: string | null;
       }>>`
         SELECT id, title, company, location, "sourceUrl", source::text, salary,
-               "postedAt", "scrapedAt", "favourited", embedding::text as embedding
+               "postedAt", "scrapedAt", embedding::text as embedding
         FROM "JobPosting"
         WHERE embedding IS NOT NULL
         LIMIT 500
       `;
+
+      // Check which jobs are favourited by this user
+      const favouritedIds = new Set(
+        (await prisma.userFavourite.findMany({ where: { userId }, select: { jobId: true } }))
+          .map((f) => f.jobId)
+      );
+
       const parsedJobs = allJobs.map((j) => ({
         ...j,
+        favourited: favouritedIds.has(j.id),
         embedding: j.embedding ? JSON.parse(j.embedding) as number[] : null,
       }));
-      // Only compare jobs whose embedding dimensions match the query embedding
-      // (dimension mismatch occurs when switching embedding providers)
       const jobs = parsedJobs.filter(
         (j) => j.embedding !== null && (j.embedding as number[]).length === queryEmbedding.length
       );
@@ -45,13 +58,18 @@ export const resolvers = {
         .slice(0, limit);
     },
 
-    getFavourites: async () => {
+    getFavourites: async (
+      _: unknown,
+      __: unknown,
+      { userId }: GqlContext
+    ) => {
       const jobs = await prisma.jobPosting.findMany({
-        where: { favourited: true },
+        where: { favouritedBy: { some: { userId } } },
         orderBy: { scrapedAt: "desc" },
       });
       return jobs.map((job) => ({
         ...job,
+        favourited: true,
         postedAt: job.postedAt?.toISOString() ?? null,
         scrapedAt: job.scrapedAt.toISOString(),
       }));
@@ -59,41 +77,58 @@ export const resolvers = {
 
     getApplications: async (
       _: unknown,
-      { status }: { status?: ApplicationStatus }
+      { status }: { status?: ApplicationStatus },
+      { userId }: GqlContext
     ) => {
       return prisma.application.findMany({
-        where: status ? { status } : undefined,
+        where: { userId, ...(status ? { status } : {}) },
         include: { job: true, coverLetter: true, interview: true },
         orderBy: { createdAt: "desc" },
       });
     },
 
-    getApplication: async (_: unknown, { id }: { id: string }) => {
-      return prisma.application.findUnique({
-        where: { id },
+    getApplication: async (
+      _: unknown,
+      { id }: { id: string },
+      { userId }: GqlContext
+    ) => {
+      return prisma.application.findFirst({
+        where: { id, userId },
         include: { job: true, coverLetter: true, interview: true },
       });
     },
 
     getInterviews: async (
       _: unknown,
-      { month, year }: { month: number; year: number }
+      { month, year }: { month: number; year: number },
+      { userId }: GqlContext
     ) => {
       const start = new Date(year, month - 1, 1);
       const end = new Date(year, month, 1);
       return prisma.interview.findMany({
-        where: { scheduledAt: { gte: start, lt: end } },
+        where: {
+          scheduledAt: { gte: start, lt: end },
+          application: { userId },
+        },
         include: { application: { include: { job: true } } },
         orderBy: { scheduledAt: "asc" },
       });
     },
 
-    getCoverLetter: async (_: unknown, { id }: { id: string }) => {
-      return prisma.coverLetter.findUnique({ where: { id } });
+    getCoverLetter: async (
+      _: unknown,
+      { id }: { id: string },
+      { userId }: GqlContext
+    ) => {
+      return prisma.coverLetter.findFirst({ where: { id, userId } });
     },
 
-    getUserProfile: async () => {
-      return prisma.userProfile.findFirst();
+    getUserProfile: async (
+      _: unknown,
+      __: unknown,
+      { userId }: GqlContext
+    ) => {
+      return prisma.userProfile.findUnique({ where: { userId } });
     },
 
     aiHealth: async () => {
@@ -102,25 +137,37 @@ export const resolvers = {
   },
 
   Mutation: {
-    toggleFavourite: async (_: unknown, { jobId }: { jobId: string }) => {
-      const job = await prisma.jobPosting.findUniqueOrThrow({ where: { id: jobId } });
-      const updated = await prisma.jobPosting.update({
-        where: { id: jobId },
-        data: { favourited: !job.favourited },
+    toggleFavourite: async (
+      _: unknown,
+      { jobId }: { jobId: string },
+      { userId }: GqlContext
+    ) => {
+      const existing = await prisma.userFavourite.findUnique({
+        where: { userId_jobId: { userId, jobId } },
       });
+      if (existing) {
+        await prisma.userFavourite.delete({ where: { userId_jobId: { userId, jobId } } });
+      } else {
+        await prisma.userFavourite.create({ data: { userId, jobId } });
+      }
+      const job = await prisma.jobPosting.findUniqueOrThrow({ where: { id: jobId } });
+      revalidateTag(favouriteTag(userId));
+      revalidatePath("/favourites");
       return {
-        ...updated,
-        postedAt: updated.postedAt?.toISOString() ?? null,
-        scrapedAt: updated.scrapedAt.toISOString(),
+        ...job,
+        favourited: !existing,
+        postedAt: job.postedAt?.toISOString() ?? null,
+        scrapedAt: job.scrapedAt.toISOString(),
       };
     },
 
     updateApplicationStatus: async (
       _: unknown,
-      { id, status }: { id: string; status: ApplicationStatus }
+      { id, status }: { id: string; status: ApplicationStatus },
+      { userId }: GqlContext
     ) => {
       return prisma.application.update({
-        where: { id },
+        where: { id, userId },
         data: { status },
         include: { job: true, coverLetter: true, interview: true },
       });
@@ -140,11 +187,12 @@ export const resolvers = {
         durationMinutes?: number;
         timezone?: string;
         notes?: string;
-      }
+      },
+      { userId }: GqlContext
     ) => {
       const [, interview] = await prisma.$transaction([
         prisma.application.update({
-          where: { id: applicationId },
+          where: { id: applicationId, userId },
           data: { status: "INTERVIEW" },
         }),
         prisma.interview.upsert({
@@ -179,8 +227,14 @@ export const resolvers = {
         scheduledAt?: string;
         durationMinutes?: number;
         notes?: string;
-      }
+      },
+      { userId }: GqlContext
     ) => {
+      // Verify the interview belongs to the user
+      const interview = await prisma.interview.findFirst({
+        where: { id, application: { userId } },
+      });
+      if (!interview) throw new Error("Not found");
       return prisma.interview.update({
         where: { id },
         data: {
@@ -193,16 +247,18 @@ export const resolvers = {
 
     generateCoverLetter: async (
       _: unknown,
-      { jobId, useSavedCV = true }: { jobId: string; useSavedCV?: boolean }
+      { jobId, useSavedCV = true }: { jobId: string; useSavedCV?: boolean },
+      { userId }: GqlContext
     ) => {
       const job = await prisma.jobPosting.findUniqueOrThrow({ where: { id: jobId } });
 
       let cvText = "";
       if (useSavedCV) {
-        cvText = await readCvText().catch(() => "");
+        cvText = await readCvText(userId).catch(() => "");
       }
 
-      const userProfile = await prisma.userProfile.findFirst({
+      const userProfile = await prisma.userProfile.findUnique({
+        where: { userId },
         select: { coverLetterLanguage: true },
       });
       const language = userProfile?.coverLetterLanguage ?? "English";
@@ -217,20 +273,27 @@ export const resolvers = {
 
       const [coverLetter] = await prisma.$transaction([
         prisma.coverLetter.create({
-          data: { jobId, content, generatedByAI: true },
+          data: { userId, jobId, content, generatedByAI: true },
         }),
-        prisma.jobPosting.update({
-          where: { id: jobId },
-          data: { favourited: true },
+        prisma.userFavourite.upsert({
+          where: { userId_jobId: { userId, jobId } },
+          create: { userId, jobId },
+          update: {},
         }),
       ]);
       return coverLetter;
     },
 
-    deleteCoverLetter: async (_: unknown, { id }: { id: string }) => {
-      // Nullify any application referencing this cover letter before deleting
+    deleteCoverLetter: async (
+      _: unknown,
+      { id }: { id: string },
+      { userId }: GqlContext
+    ) => {
+      // Verify ownership
+      const cl = await prisma.coverLetter.findFirst({ where: { id, userId } });
+      if (!cl) throw new Error("Not found");
       await prisma.application.updateMany({
-        where: { coverLetterId: id },
+        where: { coverLetterId: id, userId },
         data: { coverLetterId: null },
       });
       await prisma.coverLetter.delete({ where: { id } });
@@ -245,13 +308,14 @@ export const resolvers = {
         phone?: string;
         linkedInUrl?: string;
         githubUrl?: string;
-      }
+      },
+      { userId }: GqlContext
     ) => {
-      const existing = await prisma.userProfile.findFirst();
-      if (existing) {
-        return prisma.userProfile.update({ where: { id: existing.id }, data: args });
-      }
-      return prisma.userProfile.create({ data: args });
+      return prisma.userProfile.upsert({
+        where: { userId },
+        update: args,
+        create: { userId, ...args },
+      });
     },
   },
 };

@@ -12,12 +12,13 @@ export interface FavouriteFilters {
 }
 
 export const FAVOURITES_TAG = "favourites";
+export const favouriteTag = (userId: string) => `${FAVOURITES_TAG}:${userId}`;
 
-async function _getFavourites(filters?: FavouriteFilters): Promise<JobItem[]> {
+async function _getFavourites(userId: string, filters?: FavouriteFilters): Promise<JobItem[]> {
   const { source, position, hasSalary } = filters ?? {};
   const jobs = await prisma.jobPosting.findMany({
     where: {
-      favourited: true,
+      favouritedBy: { some: { userId } },
       ...(source && source !== "ALL" && VALID_SOURCES.has(source as JobSource) ? { source: source as JobSource } : {}),
       ...(hasSalary ? { salary: { not: null } } : {}),
       ...(position?.trim()
@@ -32,6 +33,7 @@ async function _getFavourites(filters?: FavouriteFilters): Promise<JobItem[]> {
     orderBy: { scrapedAt: "desc" },
     include: {
       coverLetters: {
+        where: { userId },
         orderBy: { createdAt: "desc" },
         take: 1,
         select: { id: true, content: true },
@@ -48,14 +50,14 @@ async function _getFavourites(filters?: FavouriteFilters): Promise<JobItem[]> {
     sourceUrl: job.sourceUrl,
     source: job.source as string,
     salary: job.salary ?? undefined,
-    favourited: job.favourited,
+    favourited: true,
     coverLetter: job.coverLetters[0] ?? null,
   }));
 }
 
-async function _getFavouriteSources(): Promise<string[]> {
+async function _getFavouriteSources(userId: string): Promise<string[]> {
   const rows = await prisma.jobPosting.findMany({
-    where: { favourited: true },
+    where: { favouritedBy: { some: { userId } } },
     distinct: ["source"],
     select: { source: true },
     orderBy: { source: "asc" },
@@ -63,12 +65,19 @@ async function _getFavouriteSources(): Promise<string[]> {
   return rows.map((r) => r.source as string);
 }
 
-export const getFavourites = unstable_cache(_getFavourites, ["get-favourites"], {
-  revalidate: 60,
-  tags: [FAVOURITES_TAG],
-});
+export function getFavourites(userId: string, filters?: FavouriteFilters) {
+  return unstable_cache(
+    () => _getFavourites(userId, filters),
+    ["get-favourites", userId, JSON.stringify(filters ?? {})],
+    { revalidate: 60, tags: [favouriteTag(userId)] },
+  )();
+}
 
-export const getFavouriteSources = unstable_cache(_getFavouriteSources, ["get-favourite-sources"], {
-  revalidate: 60,
-  tags: [FAVOURITES_TAG],
-});
+export function getFavouriteSources(userId: string) {
+  return unstable_cache(
+    () => _getFavouriteSources(userId),
+    ["get-favourite-sources", userId],
+    { revalidate: 60, tags: [favouriteTag(userId)] },
+  )();
+}
+

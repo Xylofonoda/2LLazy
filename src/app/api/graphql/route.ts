@@ -1,22 +1,24 @@
 import { ApolloServer } from "@apollo/server";
 import { NextRequest, NextResponse } from "next/server";
 import { typeDefs } from "@/graphql/schema";
-import { resolvers } from "@/graphql/resolvers";
+import { resolvers, type GqlContext } from "@/graphql/resolvers";
+import { auth } from "@/auth";
 
 export const runtime = "nodejs";
 
 const globalForApollo = globalThis as unknown as {
-  apolloServer?: ApolloServer;
+  apolloServer?: ApolloServer<GqlContext>;
   apolloStartPromise?: Promise<void>;
 };
 
 if (!globalForApollo.apolloServer) {
-  const s = new ApolloServer({ typeDefs, resolvers });
+  const s = new ApolloServer<GqlContext>({ typeDefs, resolvers });
   globalForApollo.apolloServer = s;
   globalForApollo.apolloStartPromise = s.start();
 }
 
-const server = globalForApollo.apolloServer;
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+const server = globalForApollo.apolloServer!;
 
 async function ensureStarted() {
   await globalForApollo.apolloStartPromise;
@@ -24,6 +26,11 @@ async function ensureStarted() {
 
 async function handleRequest(req: NextRequest): Promise<NextResponse> {
   await ensureStarted();
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const body =
     req.method === "POST"
@@ -65,7 +72,9 @@ async function handleRequest(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const response = await server.executeOperation(graphqlRequest);
+  const response = await server.executeOperation(graphqlRequest, {
+    contextValue: { userId: session.user.id },
+  });
 
   // Handle SingleResultResponse
   if (response.body.kind === "single") {

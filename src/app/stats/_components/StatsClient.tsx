@@ -104,8 +104,8 @@ export function StatsClient({ byStatus, bySource, weekly, totalApplications, int
           <Typography variant="h6" sx={{ mb: 2, fontSize: 14, fontWeight: 600 }}>
             Applications per Week
           </Typography>
-          <Box sx={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <Box>
+            <ResponsiveContainer width="100%" height={260}>
               <BarChart data={weekly} style={CHART_STYLE}>
                 <CartesianGrid strokeDasharray="3 3" {...GRID_STYLE} />
                 <XAxis dataKey="week" tick={AXIS_STYLE} />
@@ -125,8 +125,8 @@ export function StatsClient({ byStatus, bySource, weekly, totalApplications, int
             <Typography variant="h6" sx={{ mb: 2, fontSize: 14, fontWeight: 600 }}>
               By Status
             </Typography>
-            <Box sx={{ height: 260 }}>
-              <ResponsiveContainer width="100%" height="100%">
+            <Box>
+              <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={byStatus} layout="vertical" style={CHART_STYLE}>
                   <CartesianGrid strokeDasharray="3 3" {...GRID_STYLE} />
                   <XAxis type="number" tick={AXIS_STYLE} allowDecimals={false} />
@@ -152,8 +152,8 @@ export function StatsClient({ byStatus, bySource, weekly, totalApplications, int
             <Typography variant="h6" sx={{ mb: 2, fontSize: 14, fontWeight: 600 }}>
               By Source
             </Typography>
-            <Box sx={{ height: 260 }}>
-              <ResponsiveContainer width="100%" height="100%">
+            <Box>
+              <ResponsiveContainer width="100%" height={260}>
                 <PieChart style={CHART_STYLE}>
                   <Pie
                     data={bySource}
