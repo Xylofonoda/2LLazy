@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
+import { auth } from "@/auth";
 
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
@@ -32,6 +33,11 @@ function hasMagicBytes(buf: Buffer): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
 
@@ -71,6 +77,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   if (!fs.existsSync(UPLOADS_DIR)) {
     return NextResponse.json({ files: [] });
   }

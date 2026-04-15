@@ -5,6 +5,8 @@ import { cosineSimilarity } from "@/lib/similarity";
 import { ApplicationStatus } from "@prisma/client";
 import { revalidateTag, revalidatePath } from "next/cache";
 import { favouriteTag } from "@/lib/data/favourites";
+import { interviewTag } from "@/lib/data/interviews";
+import { applicationTag } from "@/lib/data/applications";
 
 export interface GqlContext {
   userId: string;
@@ -151,7 +153,7 @@ export const resolvers = {
         await prisma.userFavourite.create({ data: { userId, jobId } });
       }
       const job = await prisma.jobPosting.findUniqueOrThrow({ where: { id: jobId } });
-      revalidateTag(favouriteTag(userId));
+      revalidateTag(favouriteTag(userId), "default");
       revalidatePath("/favourites");
       return {
         ...job,
@@ -212,6 +214,10 @@ export const resolvers = {
           },
         }),
       ]);
+      revalidateTag(interviewTag(userId), "default");
+      revalidateTag(applicationTag(userId), "default");
+      revalidatePath("/interviews");
+      revalidatePath("/dashboard");
       return interview;
     },
 
@@ -235,7 +241,7 @@ export const resolvers = {
         where: { id, application: { userId } },
       });
       if (!interview) throw new Error("Not found");
-      return prisma.interview.update({
+      const updated = await prisma.interview.update({
         where: { id },
         data: {
           ...(scheduledAt ? { scheduledAt: new Date(scheduledAt) } : {}),
@@ -243,6 +249,9 @@ export const resolvers = {
           ...(notes !== undefined ? { notes } : {}),
         },
       });
+      revalidateTag(interviewTag(userId), "default");
+      revalidatePath("/interviews");
+      return updated;
     },
 
     generateCoverLetter: async (
@@ -281,6 +290,8 @@ export const resolvers = {
           update: {},
         }),
       ]);
+      revalidateTag(favouriteTag(userId), "default");
+      revalidatePath("/favourites");
       return coverLetter;
     },
 
