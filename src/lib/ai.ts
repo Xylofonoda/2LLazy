@@ -1,4 +1,5 @@
 import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
+import type { QueryIntent } from "./queryIntent";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
 
@@ -26,13 +27,26 @@ export async function generateEmbedding(text: string): Promise<number[]> {
  * technologies, and skills — improving embedding quality for semantic ranking.
  * E.g. "Frontend" → "Frontend developer, React, Vue, Angular, HTML, CSS, JavaScript, TypeScript, UI components, responsive design, web interfaces…"
  */
-export async function expandQueryForEmbedding(query: string, skillLevel: string): Promise<string> {
-  const model = new ChatOpenAI({ model: "gpt-4o-mini", apiKey: OPENAI_API_KEY });
-  const prompt = `You are a job search assistant. Expand the following short job search query into a rich, detailed description of the role, typical technologies, skills, and responsibilities. Write 3–5 sentences. Do not include salary, location, or company info. Be specific and technical.
+export async function expandQueryForEmbedding(
+  query: string,
+  skillLevel: string,
+  intent?: QueryIntent,
+): Promise<string> {
+  const model = new ChatOpenAI({ model: "gpt-4o-mini", apiKey: OPENAI_API_KEY, temperature: 0 });
 
-Query: "${query}"${skillLevel && skillLevel !== "Any" ? `\nSeniority level: ${skillLevel}` : ""}
+  // When an intent is available, ground the expansion with the canonical role profile
+  // text so the LLM stays within the correct domain (e.g. Frontend stays frontend-only).
+  const intentHint = intent
+    ? `\nRole context (use this as the authoritative domain guide):\n${intent.canonicalText}\n`
+    : "";
 
-Expanded description:`;
+  const prompt =
+    `You are a job search assistant. Expand the following short job search query into a rich, ` +
+    `detailed description of the role, typical technologies, skills, and responsibilities. ` +
+    `Write 3–5 sentences. Do not include salary, location, or company info. Be specific and technical.` +
+    intentHint +
+    `\n\nQuery: "${query}"${skillLevel && skillLevel !== "Any" ? `\nSeniority level: ${skillLevel}` : ""}\n\nExpanded description:`;
+
   const result = await model.invoke([{ role: "user", content: prompt }]);
   return (result.content as string).trim();
 }
@@ -54,6 +68,7 @@ export async function extractRelevantJobsFromPage(
   pageText: string,
   links: Array<{ text: string; url: string }>,
   urlHint?: RegExp,
+  intent?: QueryIntent,
 ): Promise<Array<{ title: string; url: string }>> {
   if (!OPENAI_API_KEY) return [];
 
@@ -109,16 +124,24 @@ export async function extractRelevantJobsFromPage(
   // that might not be in link text directly
   const pageSnippet = pageText.slice(0, 3000);
 
+  // Build domain-specific filtering rules: use intent when available for precision,
+  // fall back to the hardcoded rules that cover the most common cases.
+  const filteringRules = intent
+    ? `INCLUDE jobs matching: ${intent.includedTitles.join(", ") || "(any relevant)"}.\n` +
+    `EXCLUDE jobs matching: ${intent.excludedTitles.join(", ") || "(none)"}.\n` +
+    `Be strict — when a title clearly falls outside the included list, reject it.`
+    : `- "Frontend" means: React, Vue, Angular, HTML/CSS, JavaScript/TypeScript UI roles. EXCLUDE Backend, Fullstack, PHP, Java, .NET, DevOps, QA, iOS, Android, IT Director, etc.\n` +
+    `- "React" means React/React Native developer roles. EXCLUDE unrelated tech.\n` +
+    `- "Backend" means server-side roles. EXCLUDE Frontend, Mobile, QA, etc.\n` +
+    `- Be strict. If the title is ambiguous or clearly different domain → exclude it.\n` +
+    `- Fullstack is only relevant if the user explicitly searched for Fullstack.`;
+
   const prompt = `A user is searching for jobs: "${query}"${levelHint}.
 
 You are scanning a job listing page like a human recruiter would. Your job is to pick ONLY the job postings that clearly match the search.
 
 Rules:
-- "Frontend" means: React, Vue, Angular, HTML/CSS, JavaScript/TypeScript UI roles. EXCLUDE Backend, Fullstack, PHP, Java, .NET, DevOps, QA, iOS, Android, IT Director, etc.
-- "React" means React/React Native developer roles. EXCLUDE unrelated tech.
-- "Backend" means server-side roles. EXCLUDE Frontend, Mobile, QA, etc.
-- Be strict. If the title is ambiguous or clearly different domain → exclude it.
-- Fullstack is only relevant if the user explicitly searched for Fullstack.
+${filteringRules}
 
 Page text snippet (for context):
 ${pageSnippet}

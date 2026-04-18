@@ -199,6 +199,18 @@ model CalendarEvent {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// ── RAG Role Profiles ──────────────────────────────────────────────────────────
+
+model RoleProfile {
+  id            String                       @id @default(cuid())
+  category      String                       @unique
+  description   String                       @db.Text
+  antiQuery     String                       @db.Text
+  embedding     Unsupported("vector(1536)")?
+  antiEmbedding Unsupported("vector(1536)")?
+  updatedAt     DateTime                     @updatedAt
+}
+
 model CvDocument {
   id           String   @id @default(cuid())
   userId       String

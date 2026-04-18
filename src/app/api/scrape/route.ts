@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateEmbedding, expandQueryForEmbedding } from "@/lib/ai";
+import { classifyQueryIntent } from "@/lib/queryIntent";
+import { getRoleProfile, buildAugmentedQueryText, scoreWithNegative } from "@/lib/ragProfiles";
 import { scrapeCocuma } from "@/lib/scrapers/cocuma";
 import { scrapeStartupJobs } from "@/lib/scrapers/startupjobs";
 import { scrapeJobstack } from "@/lib/scrapers/jobstack";
@@ -34,6 +36,7 @@ type SSEEvent =
   | { type: "progress"; site: string; message: string }
   | { type: "job"; data: ScrapedJob & { id: string; favourited: boolean; similarity: number; isNew: boolean; isStale?: boolean } }
   | { type: "scraperDone"; site: string; doneCount: number; total: number }
+  | { type: "scrapersDone"; total: number }
   | { type: "complete"; total: number }
   | { type: "error"; site: string; message: string };
 function sseChunk(event: SSEEvent): string {
@@ -48,6 +51,8 @@ export async function POST(req: NextRequest) {
   const userId = session.user.id;
 
   // Rate limiting
+  // NOTE: x-forwarded-for is set by Netlify's CDN and trusted in this deployment.
+  // On other infrastructure this header is spoofable — use a proxy-trusted IP extraction instead.
   const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "unknown";
   const last = rateMap.get(ip) ?? 0;
   if (Date.now() - last < RATE_LIMIT_MS) {
@@ -75,33 +80,45 @@ export async function POST(req: NextRequest) {
     await writer.write(encoder.encode(sseChunk(event)));
   };
 
-  // Three scrapers run in parallel via Promise.allSettled below
-  const scrapers: Array<{
-    name: string;
-    fn: () => Promise<ScrapedJob[]>;
-  }> = [
-      { name: "Cocuma", fn: () => scrapeCocuma(query, skillLevel, deepSearch) },
-      { name: "StartupJobs", fn: () => scrapeStartupJobs(query, skillLevel, deepSearch) },
-      { name: "Jobstack", fn: () => scrapeJobstack(query, skillLevel, deepSearch) },
-      { name: "Skilleto", fn: () => scrapeSkilleto(query, skillLevel, deepSearch, city) },
-      { name: "NoFluffJobs", fn: () => scrapeNoFluffJobs(query, skillLevel, deepSearch, city) },
-      { name: "Jobs.cz", fn: () => scrapeJobsCz(query, skillLevel, deepSearch, city) },
-      { name: "Jooble", fn: () => scrapeJooble(query, skillLevel, deepSearch, city) },
-    ];
-
   (async () => {
     try {
-      // Step 1: embed the search query so we can rank against it
-      // Expand short queries (e.g. "Frontend") into rich descriptions for better semantic ranking
-      await send({ type: "progress", site: "Search", message: "Generating search embedding…" });
-      const expandedQuery = await expandQueryForEmbedding(query, skillLevel);
-      const queryEmbedding = await generateEmbedding(expandedQuery);
+      // Step 1: Classify the query intent (fast path: static table, no extra API call)
+      const intent = await classifyQueryIntent(query, skillLevel);
 
+      // Scrapers defined here so they can capture intent for intent-aware boards
+      const scrapers: Array<{ name: string; fn: () => Promise<ScrapedJob[]> }> = [
+        { name: "Cocuma", fn: () => scrapeCocuma(query, skillLevel, deepSearch) },
+        { name: "StartupJobs", fn: () => scrapeStartupJobs(query, skillLevel, deepSearch, { intent }) },
+        { name: "Jobstack", fn: () => scrapeJobstack(query, skillLevel, deepSearch) },
+        { name: "Skilleto", fn: () => scrapeSkilleto(query, skillLevel, deepSearch, city) },
+        { name: "NoFluffJobs", fn: () => scrapeNoFluffJobs(query, skillLevel, deepSearch, city, { intent, scrapingKeyword: intent.scrapingKeyword }) },
+        { name: "Jobs.cz", fn: () => scrapeJobsCz(query, skillLevel, deepSearch, city) },
+        { name: "Jooble", fn: () => scrapeJooble(query, skillLevel, deepSearch, city) },
+      ];
+
+      // Step 2: Expand the query into a rich embedding-friendly description
+      await send({ type: "progress", site: "Search", message: "Generating search embedding…" });
+      const expandedQuery = await expandQueryForEmbedding(query, skillLevel, intent);
+
+      // Step 3: RAG augmentation — load canonical role profile from DB
+      const roleProfile = await getRoleProfile(intent.category);
+      const augmentedQueryText = roleProfile
+        ? buildAugmentedQueryText(expandedQuery, roleProfile)
+        : expandedQuery;
+
+      // Step 4: Embed the (possibly augmented) query + optionally embed the anti-text
+      const [queryEmbedding, antiEmbedding] = await Promise.all([
+        generateEmbedding(augmentedQueryText),
+        roleProfile?.antiQuery ? generateEmbedding(roleProfile.antiQuery) : Promise.resolve(null),
+      ]);
+
+      // emittedSourceUrls prevents duplicates when multiple scrapers find the same job URL
+      // or when the cached DB pass re-encounters a freshly scraped job.
+      const emittedSourceUrls = new Set<string>();
       const emittedIds = new Set<string>();
       let doneCount = 0;
       const totalScrapers = scrapers.length;
       const SIMILARITY_THRESHOLD = 0.30;
-      const MAX_PER_SOURCE = deepSearch ? Infinity : 20;
 
       // Pre-load user's favourited job IDs for this session
       const userFavouriteIds = new Set(
@@ -189,7 +206,9 @@ export async function POST(req: NextRequest) {
                       isNew = saved.firstSeenAt.getTime() > Date.now() - TWENTY_FOUR_HOURS;
                     }
 
-                    const baseSimilarity = cosineSimilarity(queryEmbedding, embedding);
+                    const baseSimilarity = antiEmbedding
+                      ? scoreWithNegative(embedding, queryEmbedding, antiEmbedding)
+                      : cosineSimilarity(queryEmbedding, embedding);
                     // Boost similarity for jobs that have salary info matching user's desired range
                     let similarity = baseSimilarity;
                     if (job.salary && (salaryMin !== null || salaryMax !== null)) {
@@ -208,7 +227,8 @@ export async function POST(req: NextRequest) {
                     }
 
                     // Emit immediately (emit-as-you-go streaming)
-                    if (similarity >= SIMILARITY_THRESHOLD) {
+                    if (similarity >= SIMILARITY_THRESHOLD && !emittedSourceUrls.has(job.sourceUrl)) {
+                      emittedSourceUrls.add(job.sourceUrl);
                       emittedIds.add(id);
                       await send({ type: "job", data: { ...job, id, favourited, similarity, isNew } });
                     }
@@ -240,13 +260,15 @@ export async function POST(req: NextRequest) {
         }),
       );
 
-      await send({ type: "complete", total: emittedIds.size });
+      await send({ type: "scrapersDone", total: emittedIds.size });
 
       // ── Surface cached jobs that weren't scraped this run ──────────────
-      // Query all DB jobs with embeddings, skip already-emitted, rank by
-      // similarity to the query and emit above threshold as isStale: true.
+      // pgvector ORDER BY ranks candidates in the DB — no JS sort needed for
+      // the common (no antiEmbedding) case. When antiEmbedding is present we
+      // re-sort the 200-row subset in JS after applying the negative penalty.
       try {
         await send({ type: "progress", site: "Cache", message: "Loading cached results…" });
+        const queryVec = JSON.stringify(queryEmbedding);
         const cachedRows = await prisma.$queryRaw<Array<{
           id: string;
           title: string;
@@ -266,23 +288,29 @@ export async function POST(req: NextRequest) {
                  embedding::text as embedding, "firstSeenAt", "postedAt"
           FROM "JobPosting"
           WHERE embedding IS NOT NULL
-          LIMIT 500
+          ORDER BY embedding <=> ${queryVec}::vector
+          LIMIT 200
         `;
 
-        // Rank by similarity, cap at top 80 stale results
-        const ranked: Array<{ row: (typeof cachedRows)[0]; similarity: number }> = [];
+        // Apply threshold (+ optional anti-penalty) on the pre-sorted 200 rows
+        const candidates: Array<{ row: (typeof cachedRows)[0]; similarity: number }> = [];
         for (const row of cachedRows) {
-          if (emittedIds.has(row.id)) continue;
+          if (emittedIds.has(row.id) || emittedSourceUrls.has(row.sourceUrl)) continue;
           try {
             const emb = JSON.parse(row.embedding) as number[];
             if (emb.length !== queryEmbedding.length) continue;
-            const similarity = cosineSimilarity(queryEmbedding, emb);
-            if (similarity >= SIMILARITY_THRESHOLD) ranked.push({ row, similarity });
+            const similarity = antiEmbedding
+              ? scoreWithNegative(emb, queryEmbedding, antiEmbedding)
+              : cosineSimilarity(queryEmbedding, emb);
+            if (similarity >= SIMILARITY_THRESHOLD) candidates.push({ row, similarity });
           } catch { /* malformed embedding */ }
         }
-        ranked.sort((a, b) => b.similarity - a.similarity);
 
-        for (const { row, similarity } of ranked.slice(0, 80)) {
+        // Re-sort only when negative penalty may have changed the pgvector order
+        if (antiEmbedding) candidates.sort((a, b) => b.similarity - a.similarity);
+
+        for (const { row, similarity } of candidates.slice(0, 80)) {
+          emittedSourceUrls.add(row.sourceUrl);
           emittedIds.add(row.id);
           await send({
             type: "job",

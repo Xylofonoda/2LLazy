@@ -6,7 +6,7 @@
 import { pwFetch } from "./playwright-browser";
 import { batchProcess } from "./utils";
 import { extractJobFromText } from "./extract";
-import { ScrapedJob } from "./types";
+import { ScrapedJob, ScraperOptions } from "./types";
 import { extractRelevantJobsFromPage } from "@/lib/ai";
 
 const BASE = "https://www.startupjobs.cz";
@@ -15,6 +15,7 @@ export async function scrapeStartupJobs(
   query: string,
   skillLevel: string,
   deepSearch = false,
+  opts?: ScraperOptions,
 ): Promise<ScrapedJob[]> {
   const seniorityMap: Record<string, string> = {
     Junior: "junior",
@@ -25,6 +26,7 @@ export async function scrapeStartupJobs(
   const seniority = seniorityMap[skillLevel];
   const MAX_PAGES = deepSearch ? 4 : 2;
   const jobs: ScrapedJob[] = [];
+  const intent = opts?.intent;
 
   for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
     const params = new URLSearchParams({ search: query });
@@ -43,7 +45,7 @@ export async function scrapeStartupJobs(
     const { text: pageText, links } = result;
     if (!pageText || pageText.length < 200) break;
 
-    const relevant = await extractRelevantJobsFromPage(query, skillLevel, pageText, links);
+    const relevant = await extractRelevantJobsFromPage(query, skillLevel, pageText, links, undefined, intent);
     if (relevant.length === 0) break;
 
     const batchedJobs = await batchProcess(relevant, 5, async ({ title, url }) => {

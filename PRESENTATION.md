@@ -57,7 +57,7 @@ The application is now deployed to **Netlify** with a serverless-compatible Play
 | **UI** | Material UI v5 + Emotion | Pre-built accessible components; dark-theme MUI |
 | **State / Data** | Apollo Server 5 + GraphQL | Single typed API surface for all read/write operations |
 | **ORM** | Prisma 7 + `@prisma/adapter-pg` | Type-safe DB access; driver-adapter pattern for PG connection pools |
-| **Database** | PostgreSQL | JSONB column stores raw embedding vectors as `Json?` |
+| **Database** | PostgreSQL + pgvector | `vector(1536)` column for semantic similarity ranking |
 | **AI — embeddings** | OpenAI `text-embedding-3-small` | 1 536-dim dense vectors; cosine similarity job ranking |
 | **AI — generation** | OpenAI `gpt-4o` | Cover letter generation (full + token streaming) |
 | **AI — extraction** | OpenAI `gpt-4o-mini` | Structured JSON extraction from raw HTML, job-URL classification |
@@ -76,13 +76,18 @@ The application is now deployed to **Netlify** with a serverless-compatible Play
 A user types a query (e.g. *"React Native developer"*) and chooses a skill level. On submit:
 
 1. The query + skill level string is embedded via `OpenAIEmbeddings.embedQuery()` → 1 536-dim vector.
-2. Three scrapers run concurrently via `Promise.allSettled()`:
-   - **LinkedIn** — authenticated Playwright session, filters by `f_E` experience param, geoId Czechia
-   - **StartupJobs.cz** — unauthenticated; query mapped to Czech category slugs via regex rules
-   - **Jobstack.it** — unauthenticated; keyword + seniority query params, Czech locale headers
+2. Eight scrapers run concurrently via `Promise.allSettled()`:
+   - **StartupJobs.cz** — query mapped to Czech category slugs via regex rules
+   - **Jobstack.it** — keyword + seniority query params, Czech locale headers
+   - **Cocuma.cz** — Czech tech job board, keyword search
+   - **Skilleto.cz** — Czech IT jobs, URL-pattern filtered
+   - **NoFluffJobs.com** — Polish/Czech tech board, category-based
+   - **Jobs.cz** — major Czech general job board
+   - **Jooble.org** — aggregator, Czech locale
+   - **Glassdoor.com** — international aggregator
 3. Each job is embedded (`title × 2 + description[:1200]`) and a cosine similarity score is computed against the query vector.
 4. Results stream to the UI as **SSE events** (`progress | job | error | complete`) so cards appear one by one in real time, ordered by arrival (not score).
-5. Results are upserted into `JobPosting` with the embedding stored in a `Json?` column for cache reuse on subsequent searches (24-hour TTL, dimension-checked to handle provider switches).
+5. Results are upserted into `JobPosting` with the embedding stored in a `vector(1536)` column (pgvector) for cache reuse on subsequent searches (24-hour TTL, dimension-checked to handle provider switches).
 
 ```typescript
 // Ranking kernel — O(n) dot-product scan
@@ -139,17 +144,9 @@ The UI renders tokens progressively via a `useRef`-backed accumulator, producing
 
 ### 4. AI Form-Fill Auto-Apply
 
-`POST /api/apply` triggers `applyToJobSite()`, which:
+> **Currently disabled** — `POST /api/apply` returns `501 Not Implemented`.
 
-1. Detects the job source (`LINKEDIN | STARTUPJOBS | JOBSTACK`).
-2. Injects saved session cookies (AES-256-GCM decrypted) for LinkedIn; spawns a fresh anonymous context for others.
-3. Navigates to the job URL and calls `applyGeneric()`:
-   - **`snapshotFormFields(page)`** — injects `data-aaf-idx` attributes onto every visible, non-disabled `input | textarea | select | button` through `page.evaluate()`, then serialises each element's tag, type, id, name, placeholder, aria-label, and associated label text.
-   - This snapshot is sent to `gpt-4o-mini` with user profile data + cover letter text.
-   - The model returns a structured `FillPlan` (Zod-validated): an array of `{ idx, value }` field fills, an optional `fileUploadIdx` for the CV upload, and a `submitIdx`.
-   - The code executes the plan: `page.fill()` for text inputs, `page.setInputFiles()` for file uploads, `page.click()` for the submit button.
-4. **LinkedIn Easy Apply** gets special treatment: the modal is looped step-by-step (up to 10 steps), with AI filling each step and the code detecting whether the current step has a "Submit application" button or a "Next" / "Review" button.
-5. Results: `APPLIED | FAILED | MANUAL_REQUIRED`. On `MANUAL_REQUIRED`, a visible (non-headless) browser window is opened for the user to take over manually.
+This feature was built but has been suspended. The original implementation used Playwright to snapshot form fields via `data-aaf-idx` injection, sent the snapshot + user profile to `gpt-4o-mini` to produce a Zod-validated `FillPlan`, then executed field fills, file uploads, and form submission automatically.
 
 ---
 
@@ -177,7 +174,6 @@ plaintext → AES-256-GCM(key=ENCRYPTION_KEY, iv=random 96-bit) → iv(hex) + au
 
 - `ENCRYPTION_KEY` is a 64-character hex string (32 bytes) from the environment.
 - The GCM auth tag provides **integrity verification** — tampered ciphertext throws on decrypt.
-- Session cookies captured by Playwright are also encrypted before storage, allowing the app to re-authenticate automatically when a LinkedIn session expires.
 
 ---
 
@@ -212,7 +208,7 @@ The Prisma client uses a pool of `max: 3` connections to avoid exhausting the da
 ```
 UserProfile         — name, email, phone, linkedInUrl, githubUrl, coverLetterLanguage
 JobPosting          — title, company, location, description, sourceUrl, source,
-                      salary, postedAt, scrapedAt, firstSeenAt, embedding(Json),
+                      salary, postedAt, scrapedAt, firstSeenAt, embedding: vector(1536),
                       favourited, →[Application], →[CoverLetter]
 Application         — jobId→Job, status(enum), appliedAt, errorMessage,
                       coverLetterId→CoverLetter, →Interview
@@ -224,7 +220,7 @@ SiteCredential      — site(enum, unique), username, encryptedPassword, cookieJ
 CvDocument          — originalName, data(Bytes), size, uploadedAt
 ```
 
-Embeddings are stored as `Json?` (PostgreSQL `jsonb`) — a deliberate tradeoff that avoids the `pgvector` extension dependency while still enabling in-process cosine similarity ranking over up to ~2 000 cached jobs.
+Embeddings are stored as `vector(1536)` via the PostgreSQL **pgvector** extension, enabling in-process cosine similarity ranking.
 
 ---
 
@@ -235,7 +231,7 @@ Embeddings are stored as `Json?` (PostgreSQL `jsonb`) — a deliberate tradeoff 
 | `POST` | `/api/graphql` | JSON/HTTP | All read + write operations (Apollo Server) |
 | `POST` | `/api/scrape` | SSE stream | Live job scraping — emits `progress`, `job`, `error`, `complete` events |
 | `POST` | `/api/cover-letter/stream` | SSE stream | GPT-4o token stream + DB persist |
-| `POST` | `/api/apply` | JSON/HTTP | Trigger Playwright auto-apply for one application |
+| `POST` | `/api/apply` | JSON/HTTP | Auto-apply *(currently disabled — returns 501)* |
 | `POST` | `/api/uploads` | multipart | CV file upload (PDF/TXT → `CvDocument.data(Bytes)`) |
 | `GET/DELETE` | `/api/uploads/[filename]` | binary | Download or delete a stored CV |
 
@@ -298,14 +294,14 @@ src/
 │       ├── graphql/route.ts     # Apollo Server HTTP handler
 │       ├── scrape/route.ts      # SSE scraping endpoint
 │       ├── cover-letter/stream/ # SSE cover-letter stream
-│       ├── apply/route.ts       # Playwright auto-apply trigger
+        ├── apply/route.ts       # Auto-apply stub (501 — disabled)
 │       └── uploads/             # CV binary storage
 ├── components/                  # Shared UI components (MUI-based)
 ├── graphql/
 │   ├── schema.ts                # GraphQL SDL type definitions
 │   └── resolvers.ts             # All Query + Mutation resolvers
 └── lib/
-    ├── ollama.ts                # AI layer — OpenAI embeddings + GPT-4o cover letters
+    ├── ai.ts                    # AI layer — OpenAI embeddings + GPT-4o cover letters
     ├── browser.ts               # Playwright browser factory (dev vs. serverless)
     ├── crypto.ts                # AES-256-GCM encrypt / decrypt
     ├── cv.ts                    # CV parser (PDF + TXT via pdf-parse)
@@ -316,16 +312,19 @@ src/
     │   ├── nodes.ts             # scrapeSearchResults / filterJobLinks / scrapeJobDetail
     │   ├── state.ts             # GraphStateAnnotation with typed reducers
     │   └── tools/browser.ts     # navigateAndExtract (Playwright → Turndown Markdown)
-    ├── apply/
-    │   ├── applyGeneric.ts      # AI form-filler (snapshot → GPT-4o-mini → execute)
-    │   ├── applyLinkedIn.ts     # LinkedIn Easy Apply multi-step handler
-    │   └── applyRouter.ts       # Source-based apply dispatcher
-    ├── auth/sessionManager.ts   # Cookie injection + re-authentication
+    ├── auth/sessionManager.ts   # Session auth guard (requireUserId)
     ├── scrapers/
     │   ├── extract.ts           # GPT-4o-mini structured job extraction
-    │   ├── linkedin.ts          # LinkedIn scraper
-    │   ├── startupjobs.ts       # StartupJobs.cz scraper + query→slug mapping
+    │   ├── startupjobs.ts       # StartupJobs.cz scraper
     │   ├── jobstack.ts          # Jobstack.it scraper
+    │   ├── cocuma.ts            # Cocuma.cz scraper
+    │   ├── skilleto.ts          # Skilleto.cz scraper
+    │   ├── nofluffjobs.ts       # NoFluffJobs.com scraper
+    │   ├── jobscz.ts            # Jobs.cz scraper
+    │   ├── jooble.ts            # Jooble.org scraper
+    │   ├── fetcher.ts           # HTTP fetch helper
+    │   ├── playwright-browser.ts # Scraper-specific Playwright utilities
+    │   ├── types.ts             # Scraper shared types
     │   └── utils.ts             # batchProcess + dismissCookies utilities
     └── data/                    # Server-side data loaders for each page
 ```

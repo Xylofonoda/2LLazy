@@ -81,7 +81,7 @@ ${cvText.slice(0, 6000)}`;
 
   (async () => {
     try {
-      const llm = new ChatOpenAI({ model: "gpt-4o", streaming: true });
+      const llm = new ChatOpenAI({ model: "gpt-4o", streaming: true, temperature: 0 });
       const streamResult = await llm.stream(prompt);
       for await (const chunk of streamResult) {
         const token = typeof chunk.content === "string" ? chunk.content : "";
